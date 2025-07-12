@@ -10,10 +10,6 @@ resource "aws_s3_bucket" "portfolio_bucket" {
   force_destroy = true
 }
 
-resource "aws_s3_bucket_acl" "portfolio_bucket_acl" {
-  bucket = aws_s3_bucket.portfolio_bucket.id
-  acl    = "public-read"
-}
 
 resource "aws_s3_bucket_website_configuration" "portfolio_website" {
   bucket = aws_s3_bucket.portfolio_bucket.id
@@ -22,19 +18,7 @@ resource "aws_s3_bucket_website_configuration" "portfolio_website" {
   }
 }
 
-resource "aws_s3_bucket_policy" "allow_public_access" {
-  bucket = aws_s3_bucket.portfolio_bucket.id
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [{
-      Sid:       "PublicReadGetObject",
-      Effect:    "Allow",
-      Principal: "*",
-      Action:    "s3:GetObject",
-      Resource:  "${aws_s3_bucket.portfolio_bucket.arn}/*"
-    }]
-  })
-}
+
 
 # ---------------------------
 # IAM Role and Policies
@@ -159,7 +143,7 @@ resource "aws_apigatewayv2_integration" "visitor_integration" {
   api_id                = aws_apigatewayv2_api.visitor_api.id
   integration_type      = "AWS_PROXY"
   integration_uri       = aws_lambda_function.log_visitor.invoke_arn
-  integration_method    = "GET"
+  integration_method    = "post"
   payload_format_version = "2.0"
 }
 
