@@ -1,7 +1,7 @@
 # Terraform
 *.tfstate
 *.tfstate.*
-*.tfvars
+# *.tfvars
 *.tfvars.json
 .terraform/
 .terraform.lock.hcl
