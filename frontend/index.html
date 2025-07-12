@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chaitali Daware | Portfolio</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>Chaitali Daware</h1>
+      <p>Cloud & DevOps Engineer | AWS | Python</p>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <span class="theme-icon">🌙</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="about">
+    <div class="container">
+      <h2>About Me</h2>
+      <p>I am passionate about building cloud-native and DevOps-driven applications. 
+         I love working with AWS services, automation tools, and modern technologies 
+         to create efficient and scalable solutions.</p>
+    </div>
+  </section>
+
+  <section class="projects">
+    <div class="container">
+      <h2>Projects</h2>
+
+      <div class="project-card">
+        <h3>☁️ Cloud-Integrated Portfolio Website</h3>
+        <p>Hosted on AWS S3 + CloudFront + HTTPS. Features visitor tracking using AWS Lambda, DynamoDB, and a custom analytics dashboard via CloudWatch. CI/CD with GitHub Actions.</p>
+      </div>
+
+      <div class="project-card">
+        <h3>🔁 CI/CD Pipeline with Docker, Jenkins & EC2</h3>
+        <p>Developed a CI/CD pipeline using Jenkins installed on EC2. Automates Docker builds and app deployment from GitHub to production. Integrated testing and alerting.</p>
+      </div>
+
+      <div class="project-card">
+        <h3>📦 Infrastructure as Code with Terraform</h3>
+        <p>Created AWS cloud infrastructure (VPC, EC2, RDS, S3) using Terraform scripts. Modularized code for reusability and managed IAM roles/policies for secure deployments.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="contact">
+    <div class="container">
+      <h2>Contact Me</h2>
+      <form id="contactForm">
+        <input type="text" id="name" placeholder="Your Name" required />
+        <input type="email" id="email" placeholder="Your Email" required />
+        <input type="text" id="referralCode" placeholder="Referral Code (required)" required />
+        <textarea id="message" placeholder="Your Message" required></textarea>
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </section>
+
+  <footer>
+    <p>&copy; 2025 Chaitali Daware | All Rights Reserved</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
