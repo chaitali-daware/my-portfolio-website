@@ -143,7 +143,7 @@ resource "aws_apigatewayv2_integration" "visitor_integration" {
   api_id                = aws_apigatewayv2_api.visitor_api.id
   integration_type      = "AWS_PROXY"
   integration_uri       = aws_lambda_function.log_visitor.invoke_arn
-  integration_method    = "post"
+  integration_method    = "POST"
   payload_format_version = "2.0"
 }
 
