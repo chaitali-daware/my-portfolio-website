@@ -1,52 +1,52 @@
-name: 🚀 Deploy Static Website to AWS S3 & CloudFront
+# name: 🚀 Deploy Static Website to AWS S3 & CloudFront
 
-on:
-  push:
-    branches:
-      - main
+# on:
+#   push:
+#     branches:
+#       - main
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+#     steps:
+#       - name: Checkout Code
+#         uses: actions/checkout@v3
 
-      - name: Install AWS CLI
-        run: |
-          sudo apt update
-          sudo apt install unzip python3-pip -y
-          pip3 install awscli
+#       - name: Install AWS CLI
+#         run: |
+#           sudo apt update
+#           sudo apt install unzip python3-pip -y
+#           pip3 install awscli
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.7
+#       - name: Setup Terraform
+#         uses: hashicorp/setup-terraform@v3
+#         with:
+#           terraform_version: 1.5.7
 
-      - name: Configure AWS Credentials
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-        run: |
-          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-          aws configure set default.region $AWS_REGION
+#       - name: Configure AWS Credentials
+#         env:
+#           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           AWS_REGION: ${{ secrets.AWS_REGION }}
+#         run: |
+#           aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+#           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+#           aws configure set default.region $AWS_REGION
 
-      - name: Package Lambda Code
-        run: |
-          zip -j terraform/function.zip lambda/handleContactForm.py
-          zip -j terraform/visitor.zip lambda/logVisitorData.py
+#       - name: Package Lambda Code
+#         run: |
+#           zip -j terraform/function.zip lambda/handleContactForm.py
+#           zip -j terraform/visitor.zip lambda/logVisitorData.py
 
-      - name: Terraform Init & Apply
-        working-directory: terraform
-        run: |
-          terraform init
-          terraform apply -auto-approve -var-file="terraform.tfvars"
+#       - name: Terraform Init & Apply
+#         working-directory: terraform
+#         run: |
+#           terraform init
+#           terraform apply -auto-approve -var-file="terraform.tfvars"
 
-      - name: Upload Frontend Files to S3
-        run: |
-          aws s3 sync frontend/ s3://chaitalidaware.me --delete
+#       - name: Upload Frontend Files to S3
+#         run: |
+#           aws s3 sync frontend/ s3://chaitalidaware.me --delete
 
       
