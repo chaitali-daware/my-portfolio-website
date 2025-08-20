@@ -1,61 +1,69 @@
-import json
-import boto3
-import uuid
-from datetime import datetime
+import json  # For parsing and returning JSON data
+import boto3  # AWS SDK for Python
+import uuid  # To generate unique IDs
+from datetime import datetime  # To get current UTC timestamp
+import os  # To access environment variables
 
-# Initialize resources
+# Initialize DynamoDB resource and CloudWatch client
 dynamodb = boto3.resource('dynamodb')
 cloudwatch = boto3.client('cloudwatch')
-table = dynamodb.Table('VisitorLogs')
+
+# Get DynamoDB table name from environment variable, default to "VisitorLogs"
+VISITOR_TABLE = os.environ.get("VISITOR_TABLE", "VisitorLogs")
+table = dynamodb.Table(VISITOR_TABLE)
 
 def lambda_handler(event, context):
-    print("✅ Event received:", json.dumps(event))  # 👈 shows in CloudWatch Logs
+    # Log the incoming event for debugging purposes
+    print(" Event received:", json.dumps(event))
 
     try:
-        body = json.loads(event['body'])
+        # Parse the JSON body of the incoming HTTP request
+        body = json.loads(event.get('body', '{}'))
+        # Extract the 'page' field, default to 'unknown' if not provided
         page = body.get('page', 'unknown')
 
-        # Put item in DynamoDB
-        table.put_item(Item={
-            'VisitorID': str(uuid.uuid4()),
-            'page': page,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        # Create a new item to store in DynamoDB
+        item = {
+            'id': str(uuid.uuid4()),  # Unique ID for each visit
+            'page': page,  # The page visited
+            'timestamp': datetime.utcnow().isoformat()  # Current UTC timestamp
+        }
 
-        # ✅ Publish custom metric to CloudWatch
+        # Save the visit log to DynamoDB
+        table.put_item(Item=item)
+
+        # Publish metrics to CloudWatch for analytics
         cloudwatch.put_metric_data(
-            Namespace='Portfolio/Metrics',
+            Namespace='Portfolio/Metrics',  # Custom namespace for portfolio metrics
             MetricData=[
                 {
-                    'MetricName': 'PageVisits',
-                    'Dimensions': [
-                        {'Name': 'Page', 'Value': page}
-                    ],
-                    'Unit': 'Count',
+                    'MetricName': 'PageVisits',  # Metric name for page visits
+                    'Dimensions': [{'Name': 'Page', 'Value': page}],  # Track visits per page
+                    'Unit': 'Count',  # Each visit counts as 1
                     'Value': 1
                 }
             ]
         )
 
+        # Return a successful response
         return {
             'statusCode': 200,
             'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': '*'
+                'Access-Control-Allow-Origin':'*',  # Enable CORS for frontend
+                'Access-Control-Allow-Headers':'*'
             },
-            'body': json.dumps({ 'message': 'Visit logged!' })
+            'body': json.dumps({'message': 'Visit logged!'})
         }
 
     except Exception as e:
-        print("❌ Error:", str(e))  # Logs error in CloudWatch
+        # Log any errors for debugging
+        print(" Error:", str(e))
+        # Return an internal server error response
         return {
             'statusCode': 500,
             'headers': {
-                'Access-Control-Allow-Origin': '*',
-
-                'Access-Control-Allow-Headers': '*'
+                'Access-Control-Allow-Origin':'*',
+                'Access-Control-Allow-Headers':'*'
             },
-            'body': json.dumps({ 'error': 'Something went wrong' })
+            'body': json.dumps({'error': 'Something went wrong' })
         }
-
-
