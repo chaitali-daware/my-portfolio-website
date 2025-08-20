@@ -2,68 +2,95 @@ name: Deploy Static Website to AWS S3 & CloudFront
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ap-south-1
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
       - name: Install AWS CLI
         run: |
-          sudo apt update
-          sudo apt install unzip python3-pip -y
-          pip3 install awscli
+          python -m pip install --upgrade pip
+          pip install awscli
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.5.7
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-          aws configure set default.region $AWS_REGION
+          aws configure set region $AWS_REGION
 
       - name: Package Lambda Code
         run: |
+          mkdir -p terraform/lambda
           zip -j terraform/function.zip lambda/handleContactForm.py
           zip -j terraform/visitor.zip lambda/logVisitorData.py
 
       - name: Terraform Init & Apply
         working-directory: terraform
         run: |
-          terraform init
-          terraform apply -auto-approve -var-file="terraform.tfvars"
+          terraform init -input=false
+          terraform apply -auto-approve -input=false \
+            -var="bucket_name=chaitalidaware.me" \
+            -var="domain_name=chaitalidaware.me"
 
-      - name: Get API Gateway URLs from Terraform
+      - name: Show ACM validation records & Terraform outputs
         working-directory: terraform
         run: |
-          echo "VISITOR_API_URL=$(terraform output -raw visitor_api_url)" >> $GITHUB_ENV
-          echo "CONTACT_API_URL=$(terraform output -raw contact_form_api_url)" >> $GITHUB_ENV
+          echo "=== ACM domain validation (copy these CNAME records to Namecheap DNS) ==="
+          terraform output -json acm_domain_validation_options || true
+          echo "=== API & CloudFront Outputs ==="
+          terraform output contact_form_api_url || true
+          terraform output visitor_api_url || true
+          terraform output cloudfront_domain || true
+          terraform output cloudfront_distribution_id || true
+          terraform output acm_cert_arn || true
 
-      - name: Replace API URLs in JS
+      - name: Get Terraform outputs into env
+        working-directory: terraform
         run: |
-          sed -i "s|__VISITOR_API_URL__|$VISITOR_API_URL|g" frontend/script.js
-          sed -i "s|__CONTACT_API_URL__|$CONTACT_API_URL|g" frontend/script.js
+          echo "CONTACT_API_URL=$(terraform output -raw contact_form_api_url 2>/dev/null || true)" >> $GITHUB_ENV
+          echo "VISITOR_API_URL=$(terraform output -raw visitor_api_url 2>/dev/null || true)" >> $GITHUB_ENV
+          echo "CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || true)" >> $GITHUB_ENV
 
+      - name: Replace API URLs in JS (only if outputs exist)
+        run: |
+          if [ -n "$VISITOR_API_URL" ]; then
+            sed -i "s|__VISITOR_API_URL__|$VISITOR_API_URL|g" frontend/script.js
+            echo "Replaced VISITOR_API_URL with $VISITOR_API_URL"
+          else
+            echo "VISITOR_API_URL not available yet"
+          fi
+          if [ -n "$CONTACT_API_URL" ]; then
+            sed -i "s|__CONTACT_API_URL__|$CONTACT_API_URL|g" frontend/script.js
+            echo "Replaced CONTACT_API_URL with $CONTACT_API_URL"
+          else
+            echo "CONTACT_API_URL not available yet"
+          fi
 
-      - name: Upload Frontend Files to S3
+      - name: Upload frontend to S3
         run: |
           aws s3 sync frontend/ s3://chaitalidaware.me --delete
 
-      - name: Invalidate CloudFront Cache
+      - name: Invalidate CloudFront (if distribution created)
+        if: env.CLOUDFRONT_ID != ''
         run: |
-          CLOUDFRONT_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='portfolio'].Id" --output text)
           aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_ID --paths "/*"
-
-      
