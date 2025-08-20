@@ -45,8 +45,25 @@ jobs:
           terraform init
           terraform apply -auto-approve -var-file="terraform.tfvars"
 
+      - name: Get API Gateway URLs from Terraform
+        working-directory: terraform
+        run: |
+          echo "VISITOR_API_URL=$(terraform output -raw visitor_api_url)" >> $GITHUB_ENV
+          echo "CONTACT_API_URL=$(terraform output -raw contact_form_api_url)" >> $GITHUB_ENV
+
+      - name: Replace API URLs in JS
+        run: |
+          sed -i "s|__VISITOR_API_URL__|$VISITOR_API_URL|g" frontend/script.js
+          sed -i "s|__CONTACT_API_URL__|$CONTACT_API_URL|g" frontend/script.js
+
+
       - name: Upload Frontend Files to S3
         run: |
           aws s3 sync frontend/ s3://chaitalidaware.me --delete
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          CLOUDFRONT_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='portfolio'].Id" --output text)
+          aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_ID --paths "/*"
 
       
