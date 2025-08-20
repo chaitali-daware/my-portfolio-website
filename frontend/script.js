@@ -27,7 +27,7 @@ function initializeTheme() {
 // Visitor Logging (AWS Lambda Integration)
 async function logVisitor() {
   try {
-    await fetch("https://297o1qpe51.execute-api.ap-south-1.amazonaws.com/prod/visit", {
+    await fetch("__VISITOR_API_URL__/prod/visit",{
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -60,7 +60,7 @@ async function handleFormSubmission(e) {
   }
 
   try {
-    const response = await fetch("https://ch5ycgvnr0.execute-api.ap-south-1.amazonaws.com/prod/contact", {
+    const response = await fetch("__CONTACT_API_URL__/prod/contact", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, email, message, referralCode })
