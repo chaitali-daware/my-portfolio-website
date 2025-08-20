@@ -10,8 +10,3 @@ variable "domain_name" {
   default     = "chaitalidaware.me"
 }
 
-variable "acm_certificate_arn" {
-  description = "ACM certificate ARN for enabling HTTPS with CloudFront (must be in us-east-1)"
-  type        = string
-  default     = "arn:aws:acm:us-east-1:058264155367:certificate/a43ec253-95bb-4ea2-bdb3-362cb6154244"
-}
