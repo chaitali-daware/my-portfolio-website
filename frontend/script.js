@@ -25,9 +25,10 @@ function initializeTheme() {
 }
 
 // Visitor Logging (AWS Lambda Integration)
+// __VISITOR_API_URL__ will be replaced by CI with full URL like https://.../visit
 async function logVisitor() {
   try {
-    await fetch("__VISITOR_API_URL__/prod/visit", {
+    await fetch("__VISITOR_API_URL__", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -60,15 +61,19 @@ async function handleFormSubmission(e) {
   }
 
   try {
-    const response = await fetch("__CONTACT_API_URL__/prod/contact", {
+    const response = await fetch("__CONTACT_API_URL__", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, email, message, referralCode })
     });
 
     const result = await response.json();
-    alert(`${result.message}`);
-    document.getElementById("contactForm").reset();
+    if (response.ok) {
+      alert(result.message || "Message sent successfully!");
+      document.getElementById("contactForm").reset();
+    } else {
+      alert(result.error || "Submission failed");
+    }
   } catch (error) {
     console.error("Error:", error);
     alert("Something went wrong. Please try again later.");
