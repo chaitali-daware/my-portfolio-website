@@ -50,12 +50,12 @@ async function handleFormSubmission(e) {
   const referralCode = document.getElementById("referralCode").value.trim();
 
   if (!referralCode) {
-    alert("❗ Referral code is required.");
+    alert("Referral code is required.");
     return;
   }
 
   if (!name || !email || !message) {
-    alert("❗ Please fill in all fields.");
+    alert(" Please fill in all fields.");
     return;
   }
 
@@ -67,11 +67,11 @@ async function handleFormSubmission(e) {
     });
 
     const result = await response.json();
-    alert(`✅ ${result.message}`);
+    alert(` ${result.message}`);
     document.getElementById("contactForm").reset();
   } catch (error) {
     console.error("Error:", error);
-    alert("❌ Something went wrong. Please try again later.");
+    alert(" Something went wrong. Please try again later.");
   }
 }
 
