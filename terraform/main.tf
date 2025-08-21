@@ -25,7 +25,7 @@ provider "aws" {
 resource "aws_s3_bucket" "portfolio_bucket" {
   provider       = aws.ap
   bucket         = var.bucket_name
-  acl            = "private"
+  
   force_destroy  = true
 }
 
