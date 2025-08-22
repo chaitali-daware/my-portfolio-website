@@ -1,12 +1,9 @@
 variable "bucket_name" {
-  description = "Name of the S3 bucket used to host the portfolio website"
+  description = "S3 bucket name for the portfolio"
   type        = string
-  default     = "chaitalidaware.me"
 }
 
 variable "domain_name" {
-  description = "Your custom domain name used with CloudFront and HTTPS"
+  description = "Custom domain name for the portfolio"
   type        = string
-  default     = "chaitalidaware.me"
 }
-
