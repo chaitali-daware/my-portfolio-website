@@ -8,6 +8,7 @@ terraform {
   required_version = ">= 1.3.0"
 }
 
+# Providers
 provider "aws" {
   alias  = "ap"
   region = "ap-south-1"
@@ -36,6 +37,7 @@ resource "aws_s3_bucket_website_configuration" "portfolio_website" {
   }
 }
 
+# CloudFront OAI
 resource "aws_cloudfront_origin_access_identity" "oai" {
   provider = aws.ap
   comment  = "OAI for portfolio CloudFront"
@@ -46,13 +48,17 @@ resource "aws_s3_bucket_policy" "bucket_policy" {
   bucket   = aws_s3_bucket.portfolio_bucket.id
   policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{
-      Sid       = "AllowCloudFrontServicePrincipalReadOnly",
-      Effect    = "Allow",
-      Principal = { AWS = aws_cloudfront_origin_access_identity.oai.iam_arn },
-      Action    = "s3:GetObject",
-      Resource  = "${aws_s3_bucket.portfolio_bucket.arn}/*"
-    }]
+    Statement = [
+      {
+        Sid    = "AllowCloudFrontServicePrincipalReadOnly",
+        Effect = "Allow",
+        Principal = {
+          AWS = aws_cloudfront_origin_access_identity.oai.iam_arn
+        },
+        Action   = "s3:GetObject",
+        Resource = "${aws_s3_bucket.portfolio_bucket.arn}/*"
+      }
+    ]
   })
 }
 
@@ -84,7 +90,7 @@ resource "aws_dynamodb_table" "visitor_logs_table" {
 }
 
 # ---------------------------
-# IAM role & policy for Lambda
+# IAM Role & Policy for Lambda
 # ---------------------------
 resource "aws_iam_role" "lambda_exec" {
   provider = aws.ap
@@ -110,21 +116,21 @@ resource "aws_iam_role_policy" "lambda_policy" {
     Version = "2012-10-17",
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
+        Effect   = "Allow",
+        Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:Scan"],
         Resource = [
           aws_dynamodb_table.contact_form_table.arn,
           aws_dynamodb_table.visitor_logs_table.arn
         ]
       },
       {
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Effect   = "Allow",
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
         Resource = "arn:aws:logs:*:*:*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["cloudwatch:PutMetricData"]
+        Effect   = "Allow",
+        Action   = ["cloudwatch:PutMetricData"],
         Resource = "*"
       }
     ]
@@ -132,7 +138,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
 }
 
 # ---------------------------
-# Lambda functions
+# Lambda Functions
 # ---------------------------
 resource "aws_lambda_function" "contact_form" {
   provider        = aws.ap
@@ -140,8 +146,8 @@ resource "aws_lambda_function" "contact_form" {
   handler         = "handleContactForm.lambda_handler"
   runtime         = "python3.11"
   role            = aws_iam_role.lambda_exec.arn
-  filename        = "${path.module}/function.zip"
-  source_code_hash = filebase64sha256("${path.module}/function.zip")
+  filename        = "${path.module}/../terraform/function.zip"
+  source_code_hash = filebase64sha256("${path.module}/../terraform/function.zip")
 
   environment {
     variables = { CONTACT_TABLE = aws_dynamodb_table.contact_form_table.name }
@@ -156,8 +162,8 @@ resource "aws_lambda_function" "log_visitor" {
   handler         = "logVisitorData.lambda_handler"
   runtime         = "python3.11"
   role            = aws_iam_role.lambda_exec.arn
-  filename        = "${path.module}/visitor.zip"
-  source_code_hash = filebase64sha256("${path.module}/visitor.zip")
+  filename        = "${path.module}/../terraform/visitor.zip"
+  source_code_hash = filebase64sha256("${path.module}/../terraform/visitor.zip")
 
   environment {
     variables = { VISITOR_TABLE = aws_dynamodb_table.visitor_logs_table.name }
@@ -167,7 +173,7 @@ resource "aws_lambda_function" "log_visitor" {
 }
 
 # ---------------------------
-# API Gateway
+# API Gateway (HTTP API) - Contact
 # ---------------------------
 resource "aws_apigatewayv2_api" "contact_form_api" {
   provider      = aws.ap
@@ -176,12 +182,12 @@ resource "aws_apigatewayv2_api" "contact_form_api" {
 }
 
 resource "aws_apigatewayv2_integration" "contact_form_integration" {
-  provider               = aws.ap
-  api_id                 = aws_apigatewayv2_api.contact_form_api.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.contact_form.invoke_arn
-  integration_method     = "POST"
-  payload_format_version = "2.0"
+  provider                = aws.ap
+  api_id                  = aws_apigatewayv2_api.contact_form_api.id
+  integration_type        = "AWS_PROXY"
+  integration_uri         = aws_lambda_function.contact_form.invoke_arn
+  integration_method      = "POST"
+  payload_format_version  = "2.0"
 }
 
 resource "aws_apigatewayv2_route" "contact_form_route" {
@@ -207,6 +213,9 @@ resource "aws_lambda_permission" "contact_form_permission" {
   source_arn    = "${aws_apigatewayv2_api.contact_form_api.execution_arn}/*/*"
 }
 
+# ---------------------------
+# API Gateway (HTTP API) - Visitor
+# ---------------------------
 resource "aws_apigatewayv2_api" "visitor_api" {
   provider      = aws.ap
   name          = "VisitorTrackingAPI"
@@ -214,12 +223,12 @@ resource "aws_apigatewayv2_api" "visitor_api" {
 }
 
 resource "aws_apigatewayv2_integration" "visitor_integration" {
-  provider               = aws.ap
-  api_id                 = aws_apigatewayv2_api.visitor_api.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.log_visitor.invoke_arn
-  integration_method     = "POST"
-  payload_format_version = "2.0"
+  provider                = aws.ap
+  api_id                  = aws_apigatewayv2_api.visitor_api.id
+  integration_type        = "AWS_PROXY"
+  integration_uri         = aws_lambda_function.log_visitor.invoke_arn
+  integration_method      = "POST"
+  payload_format_version  = "2.0"
 }
 
 resource "aws_apigatewayv2_route" "visitor_route" {
@@ -255,26 +264,20 @@ resource "aws_acm_certificate" "cert" {
   lifecycle { create_before_destroy = true }
 }
 
-# Wait for ACM certificate to be issued
+# ---------------------------
+# Null resource to wait for ACM issuance
+# ---------------------------
 resource "null_resource" "wait_for_acm" {
-  depends_on = [aws_acm_certificate.cert]
+  triggers = {
+    cert_arn = aws_acm_certificate.cert.arn
+  }
 
   provisioner "local-exec" {
     command = <<EOT
-echo "=== ACM DNS Validation ==="
-echo "Add the following CNAME to Namecheap DNS:"
-echo "Name: ${aws_acm_certificate.cert.domain_validation_options[0].resource_record_name}"
-echo "Type: ${aws_acm_certificate.cert.domain_validation_options[0].resource_record_type}"
-echo "Value: ${aws_acm_certificate.cert.domain_validation_options[0].resource_record_value}"
-echo "Waiting for certificate to be ISSUED..."
-STATUS=""
-while [ "$STATUS" != "ISSUED" ]; do
-  STATUS=$(aws acm describe-certificate --certificate-arn ${aws_acm_certificate.cert.arn} --region us-east-1 --query 'Certificate.Status' --output text)
-  sleep 10
-done
-echo "Certificate ISSUED!"
+echo "Waiting for ACM certificate to be issued..."
+aws acm wait certificate-validated --certificate-arn ${aws_acm_certificate.cert.arn} --region us-east-1
+echo "ACM certificate validated!"
 EOT
-    interpreter = ["bash", "-c"]
   }
 }
 
@@ -283,7 +286,7 @@ EOT
 # ---------------------------
 resource "aws_cloudfront_distribution" "portfolio_distribution" {
   provider = aws.ap
-  depends_on = [null_resource.wait_for_acm, aws_s3_bucket_policy.bucket_policy]
+  depends_on = [null_resource.wait_for_acm]
 
   origin {
     domain_name = aws_s3_bucket.portfolio_bucket.bucket_regional_domain_name
@@ -297,7 +300,8 @@ resource "aws_cloudfront_distribution" "portfolio_distribution" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
-  aliases             = [var.domain_name]
+
+  aliases = [var.domain_name]
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
@@ -306,7 +310,9 @@ resource "aws_cloudfront_distribution" "portfolio_distribution" {
 
     forwarded_values {
       query_string = false
-      cookies { forward = "none" }
+      cookies {
+        forward = "none"
+      }
     }
 
     viewer_protocol_policy = "redirect-to-https"
@@ -318,8 +324,12 @@ resource "aws_cloudfront_distribution" "portfolio_distribution" {
   }
 
   restrictions {
-    geo_restriction { restriction_type = "none" }
+    geo_restriction {
+      restriction_type = "none"
+    }
   }
 
-  tags = { Name = "PortfolioCloudFront" }
+  tags = {
+    Name = "PortfolioCloudFront"
+  }
 }
