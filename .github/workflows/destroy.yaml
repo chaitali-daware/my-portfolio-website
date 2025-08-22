@@ -1,7 +1,7 @@
 name: Destroy AWS Infrastructure
 
 on:
-  workflow_dispatch:   # This allows you to manually trigger the workflow from GitHub Actions
+  workflow_dispatch:  # Allows manual trigger from GitHub Actions UI
 
 jobs:
   destroy:
@@ -10,22 +10,39 @@ jobs:
       AWS_REGION: ap-south-1
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install AWS CLI
+        run: |
+          python -m pip install --upgrade pip
+          pip install awscli
+
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0  # use your Terraform version
+          terraform_version: 1.5.7
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+          aws configure set region $AWS_REGION
 
-     
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -input=false
 
       - name: Terraform Destroy
-        run: terraform destroy -auto-approve
+        working-directory: terraform
+        run: terraform destroy -auto-approve -input=false \
+          -var="bucket_name=chaitalidaware.me" \
+          -var="domain_name=chaitalidaware.me"
