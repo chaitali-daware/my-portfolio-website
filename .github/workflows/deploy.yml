@@ -1,115 +1,80 @@
-name: Deploy Static Website to AWS S3 & CloudFront
+name: Deploy Portfolio
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      continue:
-        description: 'Set to "true" to continue after adding ACM CNAMEs in Namecheap'
-        required: false
-        default: 'false'
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     env:
-      AWS_REGION: ap-south-1
+      TF_IN_AUTOMATION: 1
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      DOMAIN_NAME: ${{ secrets.DOMAIN_NAME || 'chaitalidaware.me' }}
+      ALT_DOMAIN: ${{ secrets.ALT_DOMAIN || 'www.chaitalidaware.me' }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install AWS CLI and jq
-        run: |
-          python -m pip install --upgrade pip
-          pip install awscli
-          sudo apt-get update -y
-          sudo apt-get install -y jq zip unzip
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.7
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Package Lambda Code
-        run: |
-          mkdir -p terraform
-          zip -j terraform/contact.zip lambda/handleContactForm.py
-          zip -j terraform/visitor.zip lambda/logVisitorData.py
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.8.5 }
 
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init -input=false
+        run: terraform init
 
-      - name: Create ACM certificate (manual DNS step)
+      - name: Terraform Apply
+        id: tf
+        working-directory: terraform
+        env:
+          TF_VAR_domain_name: ${{ env.DOMAIN_NAME }}
+          TF_VAR_alt_domain: ${{ env.ALT_DOMAIN }}
+        run: |
+          terraform validate
+          terraform apply -auto-approve
+          # capture outputs in JSON
+          terraform output -json > tf-outputs.json
+          echo "TF_JSON=$(cat tf-outputs.json)" >> $GITHUB_OUTPUT
+
+      - name: Show ACM DNS records (Namecheap step)
         working-directory: terraform
         run: |
-          terraform apply -target=aws_acm_certificate.cert -auto-approve -input=false \
-            -var="s3_bucket_name=chaitalidaware.me" \
-            -var="domain_name=chaitalidaware.me"
+          echo "=== Add these CNAMEs in Namecheap to validate ACM (us-east-1) ==="
+          terraform output acm_validation_records
 
-      - name: Show ACM validation records & outputs
-        working-directory: terraform
+      - name: Extract endpoints to env
         run: |
-          echo "=== ACM CNAME validation records (copy these to Namecheap) ==="
-          terraform output -json acm_validation_records || true
-          echo "ACM certificate ARN:"
-          terraform output -raw acm_cert_arn || true
-          echo ""
-          echo "After adding the CNAME(s) in Namecheap, re-run this workflow via Actions → Deploy → Run workflow with continue=true"
+          echo '${{ steps.tf.outputs.TF_JSON }}' > /tmp/outputs.json
+          CONTACT=$(jq -r '.contact_api_url.value' /tmp/outputs.json)
+          VISITOR=$(jq -r '.visitor_api_url.value' /tmp/outputs.json)
+          S3=$(jq -r '.s3_bucket.value' /tmp/outputs.json)
+          CFID=$(jq -r '.cloudfront_distribution_id.value' /tmp/outputs.json)
+          echo "CONTACT_API_URL=$CONTACT" >> $GITHUB_ENV
+          echo "VISITOR_API_URL=$VISITOR" >> $GITHUB_ENV
+          echo "S3_BUCKET=$S3" >> $GITHUB_ENV
+          echo "CF_DISTRIBUTION_ID=$CFID" >> $GITHUB_ENV
+        shell: bash
 
-      - name: Full Terraform apply (all resources)
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.continue == 'true' }}
-        working-directory: terraform
-        run: terraform apply -auto-approve -input=false \
-            -var="s3_bucket_name=chaitalidaware.me" \
-            -var="domain_name=chaitalidaware.me"
-
-      - name: Get Terraform outputs into env
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.continue == 'true' }}
-        working-directory: terraform
+      - name: Replace API placeholders in frontend/script.js
         run: |
-          echo "CONTACT_API_URL=$(terraform output -raw contact_api_url 2>/dev/null || true)" >> $GITHUB_ENV
-          echo "VISITOR_API_URL=$(terraform output -raw visitor_api_url 2>/dev/null || true)" >> $GITHUB_ENV
-          echo "CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || true)" >> $GITHUB_ENV
-          echo "BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || true)" >> $GITHUB_ENV
-          echo "CLOUDFRONT_DOMAIN=$(terraform output -raw cloudfront_domain 2>/dev/null || true)" >> $GITHUB_ENV
+          sed -i "s|__VISITOR_API_URL__|$VISITOR_API_URL|g" frontend/script.js
+          sed -i "s|__CONTACT_API_URL__|$CONTACT_API_URL|g" frontend/script.js
 
-      - name: Replace API URLs in JS and upload frontend to S3
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.continue == 'true' }}
-        run: |
-          if [ -n "$VISITOR_API_URL" ]; then
-            sed -i "s|__VISITOR_API_URL__|$VISITOR_API_URL|g" frontend/script.js
-            echo "Replaced VISITOR_API_URL with $VISITOR_API_URL"
-          fi
-          if [ -n "$CONTACT_API_URL" ]; then
-            sed -i "s|__CONTACT_API_URL__|$CONTACT_API_URL|g" frontend/script.js
-            echo "Replaced CONTACT_API_URL with $CONTACT_API_URL"
-          fi
-          aws s3 sync frontend/ s3://$BUCKET_NAME --delete
+      - name: Upload frontend to S3
+        run: aws s3 sync frontend/ s3://$S3_BUCKET --delete
 
-      - name: Invalidate CloudFront
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.continue == 'true' && env.CLOUDFRONT_ID != '' }}
-        run: |
-          aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_ID --paths "/*" || true
-
-      - name: Final info
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.continue == 'true' }}
-        run: |
-          echo "Deployment complete. Frontend available at:"
-          echo " - S3 website: $(terraform -chdir=terraform output -raw s3_website_url || true)"
-          echo " - CloudFront domain: https://$(terraform -chdir=terraform output -raw cloudfront_domain || true)"
-          echo " - Custom domain: https://chaitalidaware.me"
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id "$CF_DISTRIBUTION_ID" --paths "/*"
