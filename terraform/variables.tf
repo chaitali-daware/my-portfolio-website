@@ -8,14 +8,12 @@ variable "domain_name" {
   type        = string
 }
 
-variable "region" {
+variable "aws_region" {
   description = "AWS region for resources"
-  type        = string
   default     = "ap-south-1"
 }
 
-variable "us_east_region" {
-  description = "AWS region for ACM certificate (must be us-east-1)"
-  type        = string
+variable "acm_region" {
+  description = "Region for ACM certificate (must be us-east-1 for CloudFront)"
   default     = "us-east-1"
 }
