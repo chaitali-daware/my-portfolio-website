@@ -1,53 +1,45 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-  required_version = ">= 1.3.0"
-}
-
+# main.tf
 provider "aws" {
-  region = var.aws_region
+  region = "ap-south-1"
 }
 
-# ======================
-# S3 Bucket for Website
-# ======================
+# ---------------------------
+# S3 Bucket for static site
+# ---------------------------
 resource "aws_s3_bucket" "website" {
-  bucket = var.s3_bucket_name
-  acl    = "public-read"
+  bucket         = var.s3_bucket_name
+  acl            = "public-read"
+  force_destroy  = true
+}
 
-  website {
-    index_document = "index.html"
-    error_document = "index.html"
+resource "aws_s3_bucket_website_configuration" "website_config" {
+  bucket = aws_s3_bucket.website.id
+
+  index_document {
+    suffix = "index.html"
   }
 
-  tags = {
-    Name = "PortfolioWebsiteBucket"
+  error_document {
+    key = "index.html"
   }
 }
 
 resource "aws_s3_bucket_policy" "website_policy" {
   bucket = aws_s3_bucket.website.id
-
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = "*"
-        Action = "s3:GetObject"
-        Resource = "${aws_s3_bucket.website.arn}/*"
-      }
-    ]
+    Statement = [{
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = ["s3:GetObject"]
+      Resource  = "${aws_s3_bucket.website.arn}/*"
+    }]
   })
 }
 
-# ======================
+# ---------------------------
 # ACM Certificate
-# ======================
+# ---------------------------
 resource "aws_acm_certificate" "cert" {
   domain_name       = var.domain_name
   validation_method = "DNS"
@@ -55,80 +47,13 @@ resource "aws_acm_certificate" "cert" {
   lifecycle {
     create_before_destroy = true
   }
-
-  tags = {
-    Name = "PortfolioWebsiteCert"
-  }
 }
 
-resource "aws_route53_record" "acm_validation" {
-  # This will be manually added in Namecheap
-  count   = length(aws_acm_certificate.cert.domain_validation_options)
-  name    = aws_acm_certificate.cert.domain_validation_options[count.index].resource_record_name
-  type    = aws_acm_certificate.cert.domain_validation_options[count.index].resource_record_type
-  records = [aws_acm_certificate.cert.domain_validation_options[count.index].resource_record_value]
-  ttl     = 300
-}
-
-resource "aws_acm_certificate_validation" "cert_validation" {
-  certificate_arn         = aws_acm_certificate.cert.arn
-  validation_record_fqdns = [for record in aws_route53_record.acm_validation : record.fqdn]
-}
-
-# ======================
-# CloudFront Distribution
-# ======================
-resource "aws_cloudfront_distribution" "cdn" {
-  depends_on = [aws_acm_certificate_validation.cert_validation]
-
-  origin {
-    domain_name = aws_s3_bucket.website.bucket_regional_domain_name
-    origin_id   = "S3-Website"
-  }
-
-  enabled             = true
-  is_ipv6_enabled     = true
-  default_root_object = "index.html"
-
-  default_cache_behavior {
-    allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-Website"
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    viewer_protocol_policy = "redirect-to-https"
-  }
-
-  viewer_certificate {
-    acm_certificate_arn            = aws_acm_certificate.cert.arn
-    ssl_support_method             = "sni-only"
-    minimum_protocol_version       = "TLSv1.2_2021"
-  }
-
-  aliases = [var.domain_name]
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-
-  tags = {
-    Name = "PortfolioCloudFront"
-  }
-}
-
-# ======================
+# ---------------------------
 # DynamoDB Tables
-# ======================
+# ---------------------------
 resource "aws_dynamodb_table" "contact" {
-  name         = var.dynamodb_contact_table
+  name         = var.contact_table_name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
@@ -139,7 +64,7 @@ resource "aws_dynamodb_table" "contact" {
 }
 
 resource "aws_dynamodb_table" "visitor" {
-  name         = var.dynamodb_visitor_table
+  name         = var.visitor_table_name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
@@ -149,89 +74,68 @@ resource "aws_dynamodb_table" "visitor" {
   }
 }
 
-# ======================
+# ---------------------------
 # IAM Role for Lambda
-# ======================
+# ---------------------------
 resource "aws_iam_role" "lambda_role" {
-  name = "lambda_basic_execution"
-
+  name = "portfolio_lambda_role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
     }]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "lambda_attach" {
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_policy" "dynamodb_access" {
-  name = "LambdaDynamoPolicy"
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = [
-          "dynamodb:PutItem",
-          "dynamodb:Scan",
-          "dynamodb:GetItem"
-        ]
-        Resource = [
-          aws_dynamodb_table.contact.arn,
-          aws_dynamodb_table.visitor.arn
-        ]
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_dynamo_attach" {
+resource "aws_iam_role_policy_attachment" "lambda_dynamodb" {
   role       = aws_iam_role.lambda_role.name
-  policy_arn = aws_iam_policy.dynamodb_access.arn
+  policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
 }
 
-# ======================
+resource "aws_iam_role_policy_attachment" "lambda_cloudwatch" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+}
+
+# ---------------------------
 # Lambda Functions
-# ======================
-resource "aws_lambda_function" "contact" {
-  function_name = var.lambda_contact_name
-  role          = aws_iam_role.lambda_role.arn
-  handler       = "contact.lambda_handler"
-  runtime       = "python3.11"
-
-  filename = "lambda/contact.zip"
-
+# ---------------------------
+resource "aws_lambda_function" "handle_contact" {
+  filename         = "terraform/contact.zip"
+  function_name    = "handleContactForm"
+  handler          = "handleContactForm.lambda_handler"
+  runtime          = var.lambda_runtime
+  role             = aws_iam_role.lambda_role.arn
   environment {
     variables = {
-      TABLE_NAME = aws_dynamodb_table.contact.name
+      CONTACT_TABLE = aws_dynamodb_table.contact.name
     }
   }
 }
 
-resource "aws_lambda_function" "visitor" {
-  function_name = var.lambda_visitor_name
-  role          = aws_iam_role.lambda_role.arn
-  handler       = "visitor.lambda_handler"
-  runtime       = "python3.11"
-
-  filename = "lambda/visitor.zip"
-
+resource "aws_lambda_function" "log_visitor" {
+  filename         = "terraform/visitor.zip"
+  function_name    = "logVisitorData"
+  handler          = "logVisitorData.lambda_handler"
+  runtime          = var.lambda_runtime
+  role             = aws_iam_role.lambda_role.arn
   environment {
     variables = {
-      TABLE_NAME = aws_dynamodb_table.visitor.name
+      VISITOR_TABLE = aws_dynamodb_table.visitor.name
     }
   }
 }
 
-# ======================
-# API Gateway HTTP API
-# ======================
+# ---------------------------
+# API Gateway HTTP APIs
+# ---------------------------
 resource "aws_apigatewayv2_api" "contact_api" {
   name          = "ContactAPI"
   protocol_type = "HTTP"
@@ -240,7 +144,7 @@ resource "aws_apigatewayv2_api" "contact_api" {
 resource "aws_apigatewayv2_integration" "contact_integration" {
   api_id           = aws_apigatewayv2_api.contact_api.id
   integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.contact.arn
+  integration_uri  = aws_lambda_function.handle_contact.arn
   payload_format_version = "2.0"
 }
 
@@ -250,15 +154,14 @@ resource "aws_apigatewayv2_route" "contact_route" {
   target    = "integrations/${aws_apigatewayv2_integration.contact_integration.id}"
 }
 
-resource "aws_lambda_permission" "contact_apigw" {
-  statement_id  = "AllowAPIGatewayInvokeContact"
+resource "aws_lambda_permission" "allow_contact_api" {
+  statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.contact.function_name
+  function_name = aws_lambda_function.handle_contact.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.contact_api.execution_arn}/*/*"
 }
 
-# Repeat similarly for Visitor API
 resource "aws_apigatewayv2_api" "visitor_api" {
   name          = "VisitorAPI"
   protocol_type = "HTTP"
@@ -267,7 +170,7 @@ resource "aws_apigatewayv2_api" "visitor_api" {
 resource "aws_apigatewayv2_integration" "visitor_integration" {
   api_id           = aws_apigatewayv2_api.visitor_api.id
   integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.visitor.arn
+  integration_uri  = aws_lambda_function.log_visitor.arn
   payload_format_version = "2.0"
 }
 
@@ -277,70 +180,51 @@ resource "aws_apigatewayv2_route" "visitor_route" {
   target    = "integrations/${aws_apigatewayv2_integration.visitor_integration.id}"
 }
 
-resource "aws_lambda_permission" "visitor_apigw" {
-  statement_id  = "AllowAPIGatewayInvokeVisitor"
+resource "aws_lambda_permission" "allow_visitor_api" {
+  statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.visitor.function_name
+  function_name = aws_lambda_function.log_visitor.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.visitor_api.execution_arn}/*/*"
 }
 
-# ======================
-# CloudWatch Dashboard
-# ======================
-resource "aws_cloudwatch_dashboard" "portfolio_dashboard" {
-  dashboard_name = "PortfolioDashboard"
-  dashboard_body = jsonencode({
-    widgets = [
-      {
-        type = "metric"
-        x = 0
-        y = 0
-        width = 12
-        height = 6
-        properties = {
-          metrics = [
-            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.contact.function_name],
-            ["AWS/Lambda", "Errors", "FunctionName", aws_lambda_function.contact.function_name],
-            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.visitor.function_name]
-          ]
-          view = "timeSeries"
-          stacked = false
-        }
+# ---------------------------
+# CloudFront Distribution
+# ---------------------------
+resource "aws_cloudfront_distribution" "frontend" {
+  origin {
+    domain_name = aws_s3_bucket.website.bucket_regional_domain_name
+    origin_id   = "S3-${aws_s3_bucket.website.id}"
+  }
+
+  enabled             = true
+  is_ipv6_enabled     = true
+  default_root_object = "index.html"
+
+  default_cache_behavior {
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "S3-${aws_s3_bucket.website.id}"
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
       }
-    ]
-  })
-}
-
-# ======================
-# CloudWatch Alarms
-# ======================
-resource "aws_cloudwatch_metric_alarm" "contact_errors" {
-  alarm_name          = "ContactLambdaErrors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Alarm when contact Lambda function has errors"
-  dimensions = {
-    FunctionName = aws_lambda_function.contact.function_name
+    }
   }
-}
 
-resource "aws_cloudwatch_metric_alarm" "visitor_errors" {
-  alarm_name          = "VisitorLambdaErrors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Alarm when visitor Lambda function has errors"
-  dimensions = {
-    FunctionName = aws_lambda_function.visitor.function_name
+  viewer_certificate {
+    acm_certificate_arn = aws_acm_certificate.cert.arn
+    ssl_support_method  = "sni-only"
   }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  price_class = var.cloudfront_price_class
 }
