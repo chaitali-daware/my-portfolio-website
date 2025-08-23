@@ -1,18 +1,23 @@
-output "bucket_name" {
-  value = aws_s3_bucket.portfolio_bucket.bucket
+output "s3_website_url" {
+  value = aws_s3_bucket.website.website_endpoint
 }
 
-output "cloudfront_domain" {
-  value = aws_cloudfront_distribution.portfolio_distribution.domain_name
+output "cloudfront_url" {
+  value = aws_cloudfront_distribution.cdn.domain_name
 }
 
-output "contact_form_api_url" {
-  value = "${aws_apigatewayv2_api.contact_form_api.api_endpoint}/contact"
+output "contact_api_url" {
+  value = aws_apigatewayv2_api.contact_api.api_endpoint
 }
 
 output "visitor_api_url" {
-  value = "${aws_apigatewayv2_api.visitor_api.api_endpoint}/visit"
+  value = aws_apigatewayv2_api.visitor_api.api_endpoint
 }
 
 output "acm_validation_records" {
-  value = aws_acm_certificate.cert.domain_validation_options
+  value = [for r in aws_route53_record.acm_validation : {
+    name  = r.name
+    type  = r.type
+    value = r.records[0]
+  }]
+}
