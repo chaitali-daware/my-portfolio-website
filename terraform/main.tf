@@ -252,17 +252,3 @@ resource "aws_cloudwatch_metric_alarm" "high_requests_alarm" {
   }
 }
 
-# -------------------------
-# Outputs
-# -------------------------
-output "bucket_name" {
-  value = aws_s3_bucket.portfolio_bucket.bucket
-}
-
-output "cloudfront_domain" {
-  value = aws_cloudfront_distribution.portfolio_distribution.domain_name
-}
-
-output "contact_form_api_url" {
-  value = "${aws_api_gateway_rest_api.contact_api.execution_arn}/contact"
-}
