@@ -1,7 +1,7 @@
 name: Destroy AWS Infrastructure
 
 on:
-  workflow_dispatch:  # Allows manual trigger from GitHub Actions UI
+  workflow_dispatch:   # Allows manual trigger from GitHub UI
 
 jobs:
   destroy:
@@ -37,12 +37,12 @@ jobs:
           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
           aws configure set region $AWS_REGION
 
-      - name: Terraform Init
-        working-directory: terraform
-        run: terraform init -input=false
+      - name: Empty S3 bucket (if exists)
+        run: |
+          aws s3 rm s3://chaitalidaware.me --recursive || echo "Bucket not found, skipping."
 
       - name: Terraform Destroy
         working-directory: terraform
-        run: terraform destroy -auto-approve -input=false \
-          -var="bucket_name=chaitalidaware.me" \
-          -var="domain_name=chaitalidaware.me"
+        run: |
+          terraform init -input=false
+          terraform destroy -auto-approve
