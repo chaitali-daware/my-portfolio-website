@@ -1,15 +1,21 @@
+variable "region" {
+  description = "AWS region"
+  type        = string
+  default     = "us-east-1"
+}
+
 variable "bucket_name" {
-  description = "S3 bucket name for the portfolio"
+  description = "Name of the S3 bucket for hosting"
   type        = string
 }
 
-variable "domain_name" {
-  description = "Custom domain name for the portfolio"
+variable "acm_certificate_arn" {
+  description = "ARN of the ACM certificate for CloudFront"
   type        = string
 }
 
 variable "mime_types" {
-  description = "Mapping of file extensions to MIME types for S3 uploads"
+  description = "Mapping of file extensions to MIME types"
   type        = map(string)
   default = {
     ".html" = "text/html"
@@ -20,12 +26,6 @@ variable "mime_types" {
     ".jpeg" = "image/jpeg"
     ".gif"  = "image/gif"
     ".svg"  = "image/svg+xml"
-    ".json" = "application/json"
+    ".ico"  = "image/x-icon"
   }
-}
-
-variable "region" {
-  description = "AWS region where resources will be created"
-  type        = string
-  default     = "us-east-1"
 }
