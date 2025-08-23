@@ -1,7 +1,6 @@
-aws_region           = "ap-south-1"
-domain_name          = "chaitalidaware.me"
-s3_bucket_name       = "chaitalidaware.me"
-lambda_contact_name  = "handleContactForm"
-lambda_visitor_name  = "logVisitorData"
-dynamodb_contact_table = "ContactFormSubmissions"
-dynamodb_visitor_table = "VisitorLogs"
+project_name = "portfolio"
+aws_region   = "ap-south-1"
+
+# Your Namecheap domain
+domain_name  = "chaitalidaware.me"
+alt_domain   = "www.chaitalidaware.me"
