@@ -1,19 +1,29 @@
-variable "bucket_name" {
-  description = "S3 bucket name for the portfolio"
-  type        = string
+variable "aws_region" {
+  default = "ap-south-1"
 }
 
 variable "domain_name" {
-  description = "Custom domain name for the portfolio"
+  description = "Your custom domain from Namecheap"
   type        = string
 }
 
-variable "aws_region" {
-  description = "AWS region for resources"
-  default     = "ap-south-1"
+variable "s3_bucket_name" {
+  description = "S3 bucket name for static website"
+  type        = string
 }
 
-variable "acm_region" {
-  description = "Region for ACM certificate (must be us-east-1 for CloudFront)"
-  default     = "us-east-1"
+variable "lambda_contact_name" {
+  default = "handleContactForm"
+}
+
+variable "lambda_visitor_name" {
+  default = "logVisitorData"
+}
+
+variable "dynamodb_contact_table" {
+  default = "ContactFormSubmissions"
+}
+
+variable "dynamodb_visitor_table" {
+  default = "VisitorLogs"
 }
