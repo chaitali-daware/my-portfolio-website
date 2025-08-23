@@ -1,77 +1,124 @@
-provider "aws" {
-  region = "ap-south-1" # or your preferred region
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+  required_version = ">= 1.4.0"
 }
 
-# S3 bucket for static website
+provider "aws" {
+  region = "us-east-1" # ACM for CloudFront must be in us-east-1
+}
+
+# -------------------------
+# S3 Bucket for Website Hosting
+# -------------------------
 resource "aws_s3_bucket" "portfolio_bucket" {
   bucket = var.bucket_name
-  acl    = "public-read"
+}
 
-  website {
-    index_document = "index.html"
-    error_document = "index.html"
+resource "aws_s3_bucket_website_configuration" "portfolio_website" {
+  bucket = aws_s3_bucket.portfolio_bucket.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
   }
 }
 
-# Upload static files to S3
-resource "aws_s3_bucket_object" "frontend_files" {
-  for_each = fileset("../frontend", "**/*")
-
-  bucket       = aws_s3_bucket.portfolio_bucket.bucket
-  key          = each.value
-  source       = "../frontend/${each.value}"
-  content_type = lookup(var.mime_types, regex("\\.[^.]+$", each.value), "text/plain")
-  acl          = "public-read"
+resource "aws_s3_bucket_policy" "portfolio_policy" {
+  bucket = aws_s3_bucket.portfolio_bucket.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.portfolio_bucket.arn}/*"
+      }
+    ]
+  })
 }
 
-# CloudFront distribution for HTTPS
+resource "aws_s3_bucket_public_access_block" "portfolio_access" {
+  bucket                  = aws_s3_bucket.portfolio_bucket.id
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_object" "frontend_files" {
+  for_each     = fileset("../frontend", "**/*.*")
+  bucket       = aws_s3_bucket.portfolio_bucket.id
+  key          = each.value
+  source       = "../frontend/${each.value}"
+  etag         = filemd5("../frontend/${each.value}")
+  content_type = lookup(var.mime_types, regex("\\.[^.]+$", each.value), "text/plain")
+}
+
+# -------------------------
+# ACM Certificate
+# -------------------------
+resource "aws_acm_certificate" "cert" {
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# -------------------------
+# CloudFront Distribution
+# -------------------------
 resource "aws_cloudfront_distribution" "portfolio_distribution" {
   origin {
-    domain_name = aws_s3_bucket.portfolio_bucket.bucket_regional_domain_name
-    origin_id   = "S3-${var.bucket_name}"
+    domain_name = aws_s3_bucket_website_configuration.portfolio_website.website_endpoint
+    origin_id   = "s3-portfolio-origin"
   }
 
   enabled             = true
   default_root_object = "index.html"
 
-  aliases = [var.domain_name]
-
   default_cache_behavior {
-    allowed_methods  = ["GET", "HEAD"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-${var.bucket_name}"
+    target_origin_id       = "s3-portfolio-origin"
+    viewer_protocol_policy = "redirect-to-https"
 
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
     forwarded_values {
       query_string = false
       cookies {
         forward = "none"
       }
     }
+  }
 
-    viewer_protocol_policy = "redirect-to-https"
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
   }
 
   viewer_certificate {
-    acm_certificate_arn = aws_acm_certificate.cert.arn
-    ssl_support_method   = "sni-only"
+    acm_certificate_arn      = aws_acm_certificate.cert.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 
-# ACM certificate in us-east-1 (mandatory for CloudFront)
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
-}
-
-resource "aws_acm_certificate" "cert" {
-  provider          = aws.us_east_1
-  domain_name       = var.domain_name
-  validation_method = "DNS"
-}
-
-# DynamoDB for contact form
+# -------------------------
+# DynamoDB Tables
+# -------------------------
 resource "aws_dynamodb_table" "contact_form_table" {
-  name         = "contact-form"
+  name         = "ContactFormTable"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
@@ -81,9 +128,8 @@ resource "aws_dynamodb_table" "contact_form_table" {
   }
 }
 
-# DynamoDB for visitor logs
-resource "aws_dynamodb_table" "visitor_table" {
-  name         = "visitor-logs"
+resource "aws_dynamodb_table" "visitor_logs_table" {
+  name         = "VisitorLogsTable"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
@@ -93,27 +139,11 @@ resource "aws_dynamodb_table" "visitor_table" {
   }
 }
 
-# Lambda for contact form
-resource "aws_lambda_function" "contact_form_lambda" {
-  filename         = "../lambda/function.zip"
-  function_name    = "contactFormHandler"
-  role             = aws_iam_role.lambda_exec.arn
-  handler          = "handleContactForm.lambda_handler"
-  runtime          = "python3.9"
-}
-
-# Lambda for visitor logs
-resource "aws_lambda_function" "visitor_lambda" {
-  filename         = "../lambda/visitor.zip"
-  function_name    = "visitorHandler"
-  role             = aws_iam_role.lambda_exec.arn
-  handler          = "logVisitorData.lambda_handler"
-  runtime          = "python3.9"
-}
-
-# IAM Role for Lambda
-resource "aws_iam_role" "lambda_exec" {
-  name = "lambda-exec-role"
+# -------------------------
+# Lambda Functions
+# -------------------------
+resource "aws_iam_role" "lambda_role" {
+  name = "lambda_execution_role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -128,46 +158,111 @@ resource "aws_iam_role" "lambda_exec" {
   })
 }
 
-# Attach policies for Lambda
-resource "aws_iam_role_policy_attachment" "lambda_policy" {
-  role       = aws_iam_role.lambda_exec.name
+resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
+  role       = aws_iam_role.lambda_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# API Gateway for contact form
-resource "aws_apigatewayv2_api" "contact_form_api" {
-  name          = "ContactFormAPI"
-  protocol_type = "HTTP"
+resource "aws_lambda_function" "contact_form" {
+  function_name = "ContactFormHandler"
+  runtime       = "python3.9"
+  handler       = "handleContactForm.lambda_handler"
+  role          = aws_iam_role.lambda_role.arn
+  filename      = "../lambda/function.zip"
 }
 
-# API Gateway for visitor logs
-resource "aws_apigatewayv2_api" "visitor_api" {
-  name          = "VisitorAPI"
-  protocol_type = "HTTP"
+resource "aws_lambda_function" "visitor_logger" {
+  function_name = "VisitorLogger"
+  runtime       = "python3.9"
+  handler       = "logVisitorData.lambda_handler"
+  role          = aws_iam_role.lambda_role.arn
+  filename      = "../lambda/visitor.zip"
 }
 
-# CloudWatch Dashboard
+# -------------------------
+# API Gateway
+# -------------------------
+resource "aws_api_gateway_rest_api" "contact_api" {
+  name        = "ContactFormAPI"
+  description = "API for contact form submission"
+}
+
+resource "aws_api_gateway_resource" "contact_resource" {
+  rest_api_id = aws_api_gateway_rest_api.contact_api.id
+  parent_id   = aws_api_gateway_rest_api.contact_api.root_resource_id
+  path_part   = "contact"
+}
+
+resource "aws_api_gateway_method" "contact_post" {
+  rest_api_id   = aws_api_gateway_rest_api.contact_api.id
+  resource_id   = aws_api_gateway_resource.contact_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "contact_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.contact_api.id
+  resource_id             = aws_api_gateway_resource.contact_resource.id
+  http_method             = aws_api_gateway_method.contact_post.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.contact_form.invoke_arn
+}
+
+resource "aws_lambda_permission" "contact_api_permission" {
+  statement_id  = "AllowAPIGatewayInvokeContact"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.contact_form.function_name
+  principal     = "apigateway.amazonaws.com"
+}
+
+# -------------------------
+# CloudWatch Dashboard + Alarm
+# -------------------------
 resource "aws_cloudwatch_dashboard" "portfolio_dashboard" {
   dashboard_name = "PortfolioDashboard"
   dashboard_body = jsonencode({
     widgets = [
       {
         type = "metric"
-        x    = 0
-        y    = 0
-        width = 24
-        height = 6
         properties = {
           metrics = [
-            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.contact_form_lambda.function_name],
-            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.visitor_lambda.function_name]
+            ["AWS/CloudFront", "Requests", "DistributionId", aws_cloudfront_distribution.portfolio_distribution.id]
           ]
           period = 300
           stat   = "Sum"
-          region = "ap-south-1"
-          title  = "Lambda Invocations"
+          title  = "CloudFront Requests"
         }
       }
     ]
   })
+}
+
+resource "aws_cloudwatch_metric_alarm" "high_requests_alarm" {
+  alarm_name          = "HighCloudFrontRequests"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Requests"
+  namespace           = "AWS/CloudFront"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1000
+  dimensions = {
+    DistributionId = aws_cloudfront_distribution.portfolio_distribution.id
+  }
+}
+
+# -------------------------
+# Outputs
+# -------------------------
+output "bucket_name" {
+  value = aws_s3_bucket.portfolio_bucket.bucket
+}
+
+output "cloudfront_domain" {
+  value = aws_cloudfront_distribution.portfolio_distribution.domain_name
+}
+
+output "contact_form_api_url" {
+  value = "${aws_api_gateway_rest_api.contact_api.execution_arn}/contact"
 }
