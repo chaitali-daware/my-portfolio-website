@@ -1,6 +1,24 @@
-variable "project_name" { type = string  default = "chaitalidaware.me" }
-variable "aws_region"   { type = string  default = "ap-south-1" }
+variable "domain_name" {
+  type    = string
+  default = "chaitalidaware.me"
+}
 
-# Domain names (Namecheap)
-variable "domain_name"  { type = string  default = "chaitalidaware.me" }
-variable "alt_domain"   { type = string  default = "www.chaitalidaware.me" }
+variable "aws_region" {
+  type    = string
+  default = "ap-south-1"
+}
+
+variable "certificate_region" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "contact_email" {
+  type    = string
+  default = "chaitalidaware554@gmail.com"
+}
+
+variable "environment" {
+  type    = string
+  default = "prod"
+}
