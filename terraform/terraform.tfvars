@@ -1,4 +1,4 @@
-project_name = "portfolio"
+project_name = "chaitalidaware.me"
 aws_region   = "ap-south-1"
 
 # Your Namecheap domain
