@@ -1,4 +1,4 @@
-variable "project_name" { type = string  default = "portfolio" }
+variable "project_name" { type = string  default = "chaitalidaware.me" }
 variable "aws_region"   { type = string  default = "ap-south-1" }
 
 # Domain names (Namecheap)
