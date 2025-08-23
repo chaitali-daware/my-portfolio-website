@@ -1,19 +1,14 @@
 output "bucket_name" {
-  description = "The name of the S3 bucket hosting the portfolio website"
-  value       = aws_s3_bucket.portfolio_bucket.bucket
+  value       = aws_s3_bucket.portfolio_bucket.id
+  description = "Name of the S3 bucket"
 }
 
 output "cloudfront_domain" {
-  description = "The domain name of the CloudFront distribution"
   value       = aws_cloudfront_distribution.portfolio_distribution.domain_name
-}
-
-output "certificate_arn" {
-  description = "The ARN of the ACM certificate"
-  value       = aws_acm_certificate.cert.arn
+  description = "CloudFront distribution domain"
 }
 
 output "api_gateway_url" {
-  description = "The invoke URL for the API Gateway"
-  value       = aws_api_gateway_rest_api.api.execution_arn
+  value       = aws_api_gateway_stage.api_stage.invoke_url
+  description = "Invoke URL of the API Gateway"
 }
