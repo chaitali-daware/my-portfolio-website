@@ -1,96 +1,85 @@
-name: Deploy AWS Portfolio Infra
+name: 🚀 Deploy Static Website to AWS S3 & CloudFront
 
 on:
   push:
     branches:
       - main
 
-env:
-  AWS_REGION: ap-south-1
-  TF_VERSION: 1.9.0
-
 jobs:
-  terraform:
-    name: Deploy Infrastructure
+  deploy:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: ./terraform  # Change this if your Terraform files are in root
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      # ---------------------------
+      # 1️⃣ Checkout repo
+      # ---------------------------
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      - name: Set up Terraform
+      # ---------------------------
+      # 2️⃣ Install AWS CLI & dependencies
+      # ---------------------------
+      - name: Install AWS CLI
+        run: |
+          sudo apt update
+          sudo apt install unzip python3-pip -y
+          pip3 install awscli
+
+      # ---------------------------
+      # 3️⃣ Setup Terraform
+      # ---------------------------
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ env.TF_VERSION }}
+          terraform_version: 1.5.7
 
+      # ---------------------------
+      # 4️⃣ Configure AWS Credentials
+      # ---------------------------
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Terraform Apply
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
-          terraform apply -auto-approve \
-            -var-file="terraform.tfvars"
+          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+          aws configure set default.region $AWS_REGION
 
-      - name: Get Outputs
-        id: outputs
+      # ---------------------------
+      # 5️⃣ Package Lambda code
+      # ---------------------------
+      - name: Package Lambda Code
         run: |
-          CONTACT_URL=$(terraform output -raw contact_api_url)
-          VISITOR_URL=$(terraform output -raw visitor_api_url)
-          CF_ID=$(terraform output -raw cloudfront_distribution_id)
-          BUCKET_NAME=$(terraform output -raw bucket_name)
-          echo "contact_url=$CONTACT_URL" >> $GITHUB_OUTPUT
-          echo "visitor_url=$VISITOR_URL" >> $GITHUB_OUTPUT
-          echo "cf_id=$CF_ID" >> $GITHUB_OUTPUT
-          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          mkdir -p terraform
+          zip -j terraform/function.zip lambda/handleContactForm.py
+          zip -j terraform/visitor.zip lambda/logVisitorData.py
 
-    outputs:
-      contact_url: ${{ steps.outputs.outputs.contact_url }}
-      visitor_url: ${{ steps.outputs.outputs.visitor_url }}
-      cf_id: ${{ steps.outputs.outputs.cf_id }}
-      bucket_name: ${{ steps.outputs.outputs.bucket_name }}
-
-  update-frontend:
-    name: Update Frontend & Upload to S3
-    runs-on: ubuntu-latest
-    needs: terraform
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Replace API placeholders in script.js
+      # ---------------------------
+      # 6️⃣ Terraform Init & Apply
+      # ---------------------------
+      - name: Terraform Init & Apply
+        working-directory: terraform
         run: |
-          if [ -f frontend/script.js ]; then
-            sed -i "s|__CONTACT_API_URL__|${{ needs.terraform.outputs.contact_url }}|g" frontend/script.js
-            sed -i "s|__VISITOR_API_URL__|${{ needs.terraform.outputs.visitor_url }}|g" frontend/script.js
-          else
-            echo "frontend/script.js not found. Skipping replacement."
-          fi
+          terraform init
+          terraform apply -auto-approve -var-file="terraform.tfvars"
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Upload to S3
+      # ---------------------------
+      # 7️⃣ Upload Frontend Files to S3
+      # ---------------------------
+      - name: Upload Frontend to S3
+        env:
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
         run: |
-          aws s3 sync ./frontend s3://${{ needs.terraform.outputs.bucket_name }} --delete
+          aws s3 sync frontend/ s3://$S3_BUCKET_NAME --delete
 
+      # ---------------------------
+      # 8️⃣ Invalidate CloudFront Cache
+      # ---------------------------
       - name: Invalidate CloudFront Cache
+        env:
+          CLOUDFRONT_DIST_ID: ${{ secrets.CLOUDFRONT_DIST_ID }}
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ needs.terraform.outputs.cf_id }} \
+            --distribution-id $CLOUDFRONT_DIST_ID \
             --paths "/*"
