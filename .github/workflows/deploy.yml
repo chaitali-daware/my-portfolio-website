@@ -9,17 +9,16 @@ env:
   AWS_REGION: ap-south-1
   TF_VERSION: 1.9.0
   PROJECT: portfolio
-  BUCKET_NAME: your-portfolio-bucket-name
+  BUCKET_NAME: portfolio-${{ github.actor }}-${{ github.run_id }}
 
 jobs:
   terraform:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
 
-    # ✅ Set working directory where your Terraform code is
     defaults:
       run:
-        working-directory: ./terraform  # Change this if your TF files are in a different folder
+        working-directory: ./terraform  # Change this if your .tf files are elsewhere
 
     steps:
       - name: Checkout Repository
@@ -66,7 +65,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ✅ Change frontend folder if needed
       - name: Replace API placeholders
         run: |
           sed -i "s|__CONTACT_API_URL__|${{ needs.terraform.outputs.contact_url }}|g" frontend/js/main.js
