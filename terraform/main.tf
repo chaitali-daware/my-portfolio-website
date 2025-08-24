@@ -243,6 +243,56 @@ resource "aws_cloudfront_distribution" "portfolio_distribution" {
     viewer_protocol_policy = "redirect-to-https"
   }
 
+
+# ---------------------------
+# CloudWatch Dashboard
+# ---------------------------
+resource "aws_cloudwatch_dashboard" "portfolio_dashboard" {
+  dashboard_name = "PortfolioMonitoringDashboard"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type = "metric",
+        x = 0,
+        y = 0,
+        width = 12,
+        height = 6,
+        properties = {
+          metrics = [
+            ["AWS/Lambda", "Invocations", "FunctionName", "handleContactForm"],
+            ["AWS/Lambda", "Errors", "FunctionName", "handleContactForm"],
+            ["AWS/Lambda", "Invocations", "FunctionName", "logVisitorData"],
+            ["AWS/Lambda", "Errors", "FunctionName", "logVisitorData"]
+          ],
+          view = "timeSeries",
+          stacked = false,
+          region = "ap-south-1",
+          title = "Lambda Invocations & Errors"
+        }
+      },
+      {
+        type = "metric",
+        x = 0,
+        y = 7,
+        width = 12,
+        height = 6,
+        properties = {
+          metrics = [
+            ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "ContactFormSubmissions"],
+            ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "VisitorLogs"]
+          ],
+          view = "timeSeries",
+          stacked = false,
+          region = "ap-south-1",
+          title = "DynamoDB Write Capacity"
+        }
+      }
+    ]
+  })
+}
+
+
   # Use ACM if custom domain, else CloudFront default
   viewer_certificate {
     acm_certificate_arn = var.acm_certificate_arn
