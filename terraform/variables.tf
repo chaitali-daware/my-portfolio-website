@@ -1,24 +1,15 @@
-variable "domain_name" {
-  type    = string
-  default = "chaitalidaware.me"
-}
-
 variable "aws_region" {
-  type    = string
-  default = "ap-south-1"
+  description = "AWS region to deploy resources"
+  default     = "ap-south-1"
 }
 
-variable "certificate_region" {
-  type    = string
-  default = "us-east-1"
+variable "bucket_name" {
+  description = "Name of the S3 bucket"
+  type        = string
 }
 
-variable "contact_email" {
-  type    = string
-  default = "chaitalidaware554@gmail.com"
-}
-
-variable "environment" {
-  type    = string
-  default = "prod"
+variable "local_website_path" {
+  description = "Local path of website files (HTML, CSS, JS)"
+  type        = string
+  default     = "./frontend"
 }
