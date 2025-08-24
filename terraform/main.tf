@@ -6,11 +6,19 @@ provider "aws" {
 # S3 Bucket for Frontend
 # ---------------------------
 resource "aws_s3_bucket" "portfolio_bucket" {
-  bucket = var.bucket_name
-  force_destroy = true
+  bucket         = var.bucket_name
+  force_destroy  = true
 }
 
+# Enforce Ownership Control
+resource "aws_s3_bucket_ownership_controls" "ownership" {
+  bucket = aws_s3_bucket.portfolio_bucket.id
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
 
+# Website Configuration (still needed for index.html fallback)
 resource "aws_s3_bucket_website_configuration" "portfolio_website" {
   bucket = aws_s3_bucket.portfolio_bucket.id
   index_document {
@@ -18,10 +26,8 @@ resource "aws_s3_bucket_website_configuration" "portfolio_website" {
   }
 }
 
-
-
 # ---------------------------
-# IAM Role and Policies
+# IAM Role and Policies for Lambda
 # ---------------------------
 resource "aws_iam_role" "lambda_exec" {
   name = "lambda_exec_role"
@@ -36,19 +42,36 @@ resource "aws_iam_role" "lambda_exec" {
   })
 }
 
+# Attach DynamoDB permissions to Lambda
 resource "aws_iam_role_policy" "lambda_dynamodb" {
   name = "lambda-dynamodb-policy"
   role = aws_iam_role.lambda_exec.id
   policy = jsonencode({
     Version: "2012-10-17",
-    Statement: [{
-      Effect:   "Allow",
-      Action: ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:Scan"],
-      Resource: [
-        aws_dynamodb_table.contact_form_table.arn,
-        aws_dynamodb_table.visitor_logs_table.arn
-      ]
-    }]
+    Statement: [
+      {
+        Effect: "Allow",
+        Action: [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Scan"
+        ],
+        Resource: [
+          aws_dynamodb_table.contact_form_table.arn,
+          aws_dynamodb_table.visitor_logs_table.arn
+        ]
+      },
+      {
+        Effect: "Allow",
+        Action: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        Resource: "*"
+      }
+    ]
   })
 }
 
@@ -79,27 +102,27 @@ resource "aws_dynamodb_table" "visitor_logs_table" {
 # Lambda Functions
 # ---------------------------
 resource "aws_lambda_function" "contact_form" {
-  function_name = "handleContactForm"
-  handler       = "handleContactForm.lambda_handler"
-  runtime       = "python3.11"
-  role          = aws_iam_role.lambda_exec.arn
-  filename      = "${path.module}/../lambda/function.zip"
+  function_name    = "handleContactForm"
+  handler          = "handleContactForm.lambda_handler"
+  runtime          = "python3.11"
+  role             = aws_iam_role.lambda_exec.arn
+  filename         = "${path.module}/../lambda/function.zip"
   source_code_hash = filebase64sha256("${path.module}/../lambda/function.zip")
-  depends_on    = [aws_iam_role.lambda_exec, aws_iam_role_policy.lambda_dynamodb]
+  depends_on       = [aws_iam_role.lambda_exec, aws_iam_role_policy.lambda_dynamodb]
 }
 
 resource "aws_lambda_function" "log_visitor" {
-  function_name = "logVisitorData"
-  handler       = "logVisitorData.lambda_handler"
-  runtime       = "python3.11"
-  role          = aws_iam_role.lambda_exec.arn
-  filename      = "${path.module}/../lambda/visitor.zip"
+  function_name    = "logVisitorData"
+  handler          = "logVisitorData.lambda_handler"
+  runtime          = "python3.11"
+  role             = aws_iam_role.lambda_exec.arn
+  filename         = "${path.module}/../lambda/visitor.zip"
   source_code_hash = filebase64sha256("${path.module}/../lambda/visitor.zip")
-  depends_on    = [aws_iam_role.lambda_exec, aws_iam_role_policy.lambda_dynamodb]
+  depends_on       = [aws_iam_role.lambda_exec, aws_iam_role_policy.lambda_dynamodb]
 }
 
 # ---------------------------
-# API Gateway for Lambdas
+# API Gateway - Contact Form
 # ---------------------------
 resource "aws_apigatewayv2_api" "contact_form_api" {
   name          = "ContactFormAPI"
@@ -110,7 +133,6 @@ resource "aws_apigatewayv2_integration" "contact_form_integration" {
   api_id                = aws_apigatewayv2_api.contact_form_api.id
   integration_type      = "AWS_PROXY"
   integration_uri       = aws_lambda_function.contact_form.invoke_arn
-  integration_method    = "POST"
   payload_format_version = "2.0"
 }
 
@@ -134,6 +156,9 @@ resource "aws_lambda_permission" "contact_form_permission" {
   source_arn    = "${aws_apigatewayv2_api.contact_form_api.execution_arn}/*/*"
 }
 
+# ---------------------------
+# API Gateway - Visitor Tracking
+# ---------------------------
 resource "aws_apigatewayv2_api" "visitor_api" {
   name          = "VisitorTrackingAPI"
   protocol_type = "HTTP"
@@ -143,7 +168,6 @@ resource "aws_apigatewayv2_integration" "visitor_integration" {
   api_id                = aws_apigatewayv2_api.visitor_api.id
   integration_type      = "AWS_PROXY"
   integration_uri       = aws_lambda_function.log_visitor.invoke_arn
-  integration_method    = "POST"
   payload_format_version = "2.0"
 }
 
@@ -168,90 +192,27 @@ resource "aws_lambda_permission" "visitor_permission" {
 }
 
 # ---------------------------
-# CloudWatch Alarms
+# CloudFront + OAI
 # ---------------------------
-resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm_contact" {
-  alarm_name          = "ContactFormLambdaErrors"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 1
-  dimensions = {
-    FunctionName = aws_lambda_function.contact_form.function_name
-  }
-  treat_missing_data = "notBreaching"
-  alarm_description  = "Alarm if Contact Form Lambda has errors"
+resource "aws_cloudfront_origin_access_identity" "oai" {
+  comment = "OAI for portfolio CloudFront"
 }
 
-resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm_visitor" {
-  alarm_name          = "VisitorLambdaErrors"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 1
-  dimensions = {
-    FunctionName = aws_lambda_function.log_visitor.function_name
-  }
-  treat_missing_data = "notBreaching"
-  alarm_description  = "Alarm if Visitor Lambda has errors"
-}
-
-# ---------------------------
-# CloudWatch Dashboard
-# ---------------------------
-resource "aws_cloudwatch_dashboard" "portfolio_dashboard" {
-  dashboard_name = "PortfolioMonitoringDashboard"
-
-  dashboard_body = jsonencode({
-    widgets = [
+resource "aws_s3_bucket_policy" "bucket_policy" {
+  bucket = aws_s3_bucket.portfolio_bucket.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
       {
-        type = "metric",
-        x = 0,
-        y = 0,
-        width = 12,
-        height = 6,
-        properties = {
-          metrics = [
-            ["AWS/Lambda", "Invocations", "FunctionName", "handleContactForm"],
-            ["AWS/Lambda", "Errors", "FunctionName", "handleContactForm"],
-            ["AWS/Lambda", "Invocations", "FunctionName", "logVisitorData"],
-            ["AWS/Lambda", "Errors", "FunctionName", "logVisitorData"]
-          ],
-          view = "timeSeries",
-          stacked = false,
-          region = "ap-south-1",
-          title = "Lambda Invocations & Errors"
-        }
-      },
-      {
-        type = "metric",
-        x = 0,
-        y = 7,
-        width = 12,
-        height = 6,
-        properties = {
-          metrics = [
-            ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "ContactFormSubmissions"],
-            ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "VisitorLogs"]
-          ],
-          view = "timeSeries",
-          stacked = false,
-          region = "ap-south-1",
-          title = "DynamoDB Write Capacity"
-        }
+        Effect = "Allow",
+        Principal = {
+          AWS = aws_cloudfront_origin_access_identity.oai.iam_arn
+        },
+        Action = "s3:GetObject",
+        Resource = "${aws_s3_bucket.portfolio_bucket.arn}/*"
       }
     ]
   })
-}
-
-resource "aws_cloudfront_origin_access_identity" "oai" {
-  comment = "OAI for portfolio CloudFront"
 }
 
 resource "aws_cloudfront_distribution" "portfolio_distribution" {
@@ -282,9 +243,11 @@ resource "aws_cloudfront_distribution" "portfolio_distribution" {
     viewer_protocol_policy = "redirect-to-https"
   }
 
+  # Use ACM if custom domain, else CloudFront default
   viewer_certificate {
     acm_certificate_arn = var.acm_certificate_arn
     ssl_support_method  = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
   restrictions {
@@ -293,8 +256,9 @@ resource "aws_cloudfront_distribution" "portfolio_distribution" {
     }
   }
 
+  price_class = "PriceClass_100"
+
   tags = {
     Name = "PortfolioCloudFront"
   }
 }
-
