@@ -3,17 +3,13 @@ variable "aws_region" {
 }
 
 variable "bucket_name" {
-  default = "chaitalidaware.me"
+  description = "S3 bucket name for the website"
 }
 
 variable "domain_name" {
-  description = "Your custom domain (Namecheap)"
+  description = "Custom domain name (e.g., chaitalidaware.me)"
 }
 
-variable "contact_form_table" {
-  default = "ContactFormSubmissions"
-}
-
-variable "visitor_table" {
-  default = "VisitorLogs"
+variable "lambda_role_name" {
+  default = "portfolio-lambda-role"
 }
