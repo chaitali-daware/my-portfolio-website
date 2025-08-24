@@ -211,10 +211,7 @@ resource "aws_acm_certificate" "cert" {
   tags              = local.tags
 }
 
-# Output ACM Validation Info (for Namecheap DNS)
-output "acm_validation_cname" {
-  value = aws_acm_certificate.cert.domain_validation_options
-}
+
 
 # ----- S3 Bucket (private) -----
 resource "aws_s3_bucket" "site" {
