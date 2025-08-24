@@ -1,9 +1,14 @@
-variable "bucket_name" {
-  type        = string
-  description = "Name of the S3 bucket"
+variable "aws_region" {
+  description = "AWS region"
+  default     = "ap-south-1"
 }
 
-variable "aws_region" {
+variable "bucket_name" {
+  description = "S3 bucket name"
   type        = string
-  description = "AWS region to create resources in"
+}
+
+variable "domain_name" {
+  description = "Your custom domain name"
+  type        = string
 }
