@@ -50,10 +50,9 @@ resource "aws_s3_bucket_website_configuration" "website_config" {
 
 # Upload all files in frontend/ folder
 resource "aws_s3_object" "website_files" {
-  for_each = { for file in fileset(var.local_website_path, "**/*") : file => file }
+  for_each = { for file in fileset("${path.module}/../frontend", "**/*") : file => file }
 
   bucket = aws_s3_bucket.website.id
   key    = each.value
-  source = "${var.local_website_path}/${each.value}"
+  source = "${path.module}/../frontend/${each.value}"
 }
-
