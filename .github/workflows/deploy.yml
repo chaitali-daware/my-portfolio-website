@@ -1,80 +1,31 @@
-name: Deploy Portfolio
+name: Deploy S3 Website
 
 on:
   push:
-    branches: [ main ]
-
-permissions:
-  id-token: write
-  contents: read
+    branches:
+      - main
 
 jobs:
   deploy:
+    name: Deploy S3 Website
     runs-on: ubuntu-latest
 
-    env:
-      TF_IN_AUTOMATION: 1
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      DOMAIN_NAME: ${{ secrets.DOMAIN_NAME || 'chaitalidaware.me' }}
-      ALT_DOMAIN: ${{ secrets.ALT_DOMAIN || 'www.chaitalidaware.me' }}
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: 1.8.5 }
+          aws-region: ap-south-1
 
       - name: Terraform Init
-        working-directory: terraform
         run: terraform init
 
       - name: Terraform Apply
-        id: tf
-        working-directory: terraform
-        env:
-          TF_VAR_domain_name: ${{ env.DOMAIN_NAME }}
-          TF_VAR_alt_domain: ${{ env.ALT_DOMAIN }}
-        run: |
-          terraform validate
-          terraform apply -auto-approve
-          # capture outputs in JSON
-          terraform output -json > tf-outputs.json
-          echo "TF_JSON=$(cat tf-outputs.json)" >> $GITHUB_OUTPUT
-
-      - name: Show ACM DNS records (Namecheap step)
-        working-directory: terraform
-        run: |
-          echo "=== Add these CNAMEs in Namecheap to validate ACM (us-east-1) ==="
-          terraform output acm_validation_records
-
-      - name: Extract endpoints to env
-        run: |
-          echo '${{ steps.tf.outputs.TF_JSON }}' > /tmp/outputs.json
-          CONTACT=$(jq -r '.contact_api_url.value' /tmp/outputs.json)
-          VISITOR=$(jq -r '.visitor_api_url.value' /tmp/outputs.json)
-          S3=$(jq -r '.s3_bucket.value' /tmp/outputs.json)
-          CFID=$(jq -r '.cloudfront_distribution_id.value' /tmp/outputs.json)
-          echo "CONTACT_API_URL=$CONTACT" >> $GITHUB_ENV
-          echo "VISITOR_API_URL=$VISITOR" >> $GITHUB_ENV
-          echo "S3_BUCKET=$S3" >> $GITHUB_ENV
-          echo "CF_DISTRIBUTION_ID=$CFID" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Replace API placeholders in frontend/script.js
-        run: |
-          sed -i "s|__VISITOR_API_URL__|$VISITOR_API_URL|g" frontend/script.js
-          sed -i "s|__CONTACT_API_URL__|$CONTACT_API_URL|g" frontend/script.js
-
-      - name: Upload frontend to S3
-        run: aws s3 sync frontend/ s3://$S3_BUCKET --delete
-
-      - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id "$CF_DISTRIBUTION_ID" --paths "/*"
+        run: terraform apply -auto-approve
