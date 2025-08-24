@@ -336,7 +336,7 @@ resource "aws_cloudwatch_dashboard" "dash" {
       }
     ]
   })
-  tags = local.tags
+  
 }
 
 resource "aws_sns_topic" "alarms" {
