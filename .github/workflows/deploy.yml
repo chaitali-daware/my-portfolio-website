@@ -8,8 +8,6 @@ on:
 env:
   AWS_REGION: ap-south-1
   TF_VERSION: 1.9.0
-  PROJECT: portfolio
-  BUCKET_NAME: portfolio-${{ github.actor }}-${{ github.run_id }}
 
 jobs:
   terraform:
@@ -18,7 +16,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ./terraform  # Change this if your .tf files are elsewhere
+        working-directory: ./terraform  # Change this if your .tf files are in a different folder
 
     steps:
       - name: Checkout Repository
@@ -42,8 +40,6 @@ jobs:
       - name: Terraform Apply
         run: |
           terraform apply -auto-approve \
-            -var="project=${{ env.PROJECT }}" \
-            -var="bucket_name=${{ env.BUCKET_NAME }}" \
             -var="alarm_email=${{ secrets.ALARM_EMAIL }}"
 
       - name: Get API URLs
@@ -65,14 +61,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Replace API placeholders
+      - name: Replace API placeholders in script.js
         run: |
-          sed -i "s|__CONTACT_API_URL__|${{ needs.terraform.outputs.contact_url }}|g" frontend/js/main.js
-          sed -i "s|__VISITOR_API_URL__|${{ needs.terraform.outputs.visitor_url }}|g" frontend/js/main.js
+          if [ -f frontend/script.js ]; then
+            sed -i "s|__CONTACT_API_URL__|${{ needs.terraform.outputs.contact_url }}|g" frontend/script.js
+            sed -i "s|__VISITOR_API_URL__|${{ needs.terraform.outputs.visitor_url }}|g" frontend/script.js
+          else
+            echo "frontend/script.js not found. Skipping replacement."
+          fi
 
       - name: Upload to S3
         run: |
-          aws s3 sync ./frontend s3://${{ env.BUCKET_NAME }} --delete
+          BUCKET_NAME=$(terraform -chdir=terraform output -raw bucket_name)
+          aws s3 sync ./frontend s3://$BUCKET_NAME --delete
 
       - name: Invalidate CloudFront Cache
         run: |
