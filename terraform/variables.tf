@@ -3,21 +3,18 @@ variable "aws_region" {
 }
 
 variable "bucket_name" {
-  description = "S3 bucket name"
-  default     = "chaitalidaware.me"
+  default = "chaitalidaware.me"
 }
 
 variable "domain_name" {
-  description = "Your custom domain"
+  description = "Your domain name (e.g., chaitalidaware.me)"
   default     = "chaitalidaware.me"
 }
 
-variable "frontend_folder" {
-  description = "Path to frontend folder"
-  default     = "../frontend"
+variable "frontend_dir" {
+  default = "../frontend"
 }
 
-variable "lambda_folder" {
-  description = "Path to lambda folder"
-  default     = "../lambda"
+variable "lambda_dir" {
+  default = "../lambda"
 }
