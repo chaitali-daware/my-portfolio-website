@@ -68,10 +68,8 @@ jobs:
       # 7️ Upload Frontend Files to S3
       # ---------------------------
       - name: Upload Frontend to S3
-        env:
-          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
         run: |
-          aws s3 sync frontend/ s3://$S3_BUCKET_NAME --delete
+          aws s3 sync frontend/ s3://chaitalidaware.me --delete
 
       # ---------------------------
       # 8️ Invalidate CloudFront Cache
