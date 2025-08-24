@@ -1,26 +1,24 @@
-output "bucket_name" {
-  value       = aws_s3_bucket.site.bucket
-  description = "S3 bucket hosting the frontend (private behind CloudFront)"
-}
-
-output "cloudfront_domain_name" {
-  value       = aws_cloudfront_distribution.cdn.domain_name
-  description = "CloudFront URL for the site"
-}
-
-output "cloudfront_distribution_id" {
-  value = aws_cloudfront_distribution.cdn.id
-}
-
-output "api_base_url" {
+output "api_gateway_url" {
+  description = "Invoke URL for API Gateway"
   value       = aws_apigatewayv2_api.api.api_endpoint
-  description = "Base URL for HTTP API"
 }
 
-output "contact_api_url" {
-  value = "${aws_apigatewayv2_api.api.api_endpoint}/contact"
+output "cloudfront_domain" {
+  description = "CloudFront distribution domain"
+  value       = aws_cloudfront_distribution.cdn.domain_name
 }
 
-output "visitor_api_url" {
-  value = "${aws_apigatewayv2_api.api.api_endpoint}/visitor"
+output "website_bucket" {
+  description = "S3 Bucket name for website"
+  value       = aws_s3_bucket.site.id
+}
+
+output "acm_validation_cname" {
+  description = "ACM validation details for DNS"
+  value       = aws_acm_certificate.cert.domain_validation_options
+}
+
+output "custom_domain" {
+  description = "Your custom domain name"
+  value       = var.domain_name
 }
