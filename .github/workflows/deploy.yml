@@ -16,7 +16,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ./terraform  # Change this if your .tf files are in a different folder
+        working-directory: ./terraform  # Change this if your Terraform files are in root
 
     steps:
       - name: Checkout Repository
@@ -40,17 +40,25 @@ jobs:
       - name: Terraform Apply
         run: |
           terraform apply -auto-approve \
-            -var="alarm_email=${{ secrets.ALARM_EMAIL }}"
+            -var-file="terraform.tfvars"
 
-      - name: Get API URLs
-        id: apis
+      - name: Get Outputs
+        id: outputs
         run: |
           CONTACT_URL=$(terraform output -raw contact_api_url)
           VISITOR_URL=$(terraform output -raw visitor_api_url)
           CF_ID=$(terraform output -raw cloudfront_distribution_id)
+          BUCKET_NAME=$(terraform output -raw bucket_name)
           echo "contact_url=$CONTACT_URL" >> $GITHUB_OUTPUT
           echo "visitor_url=$VISITOR_URL" >> $GITHUB_OUTPUT
           echo "cf_id=$CF_ID" >> $GITHUB_OUTPUT
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+
+    outputs:
+      contact_url: ${{ steps.outputs.outputs.contact_url }}
+      visitor_url: ${{ steps.outputs.outputs.visitor_url }}
+      cf_id: ${{ steps.outputs.outputs.cf_id }}
+      bucket_name: ${{ steps.outputs.outputs.bucket_name }}
 
   update-frontend:
     name: Update Frontend & Upload to S3
@@ -70,11 +78,19 @@ jobs:
             echo "frontend/script.js not found. Skipping replacement."
           fi
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Upload to S3
         run: |
-          BUCKET_NAME=$(terraform -chdir=terraform output -raw bucket_name)
-          aws s3 sync ./frontend s3://$BUCKET_NAME --delete
+          aws s3 sync ./frontend s3://${{ needs.terraform.outputs.bucket_name }} --delete
 
       - name: Invalidate CloudFront Cache
         run: |
-          aws cloudfront create-invalidation --distribution-id ${{ needs.terraform.outputs.cf_id }} --paths "/*"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ needs.terraform.outputs.cf_id }} \
+            --paths "/*"
