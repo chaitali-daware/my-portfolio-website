@@ -193,7 +193,7 @@ resource "aws_lambda_permission" "apigw_contact" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.contact.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.api.execution_arn}///contact"
+  source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/POST/contact"
 }
 
 resource "aws_lambda_permission" "apigw_visitor" {
@@ -201,10 +201,22 @@ resource "aws_lambda_permission" "apigw_visitor" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.visitor.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.api.execution_arn}///visitor"
+  source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/POST/visitor"
 }
 
-# ----- S3 Bucket (private) + CloudFront (HTTPS) -----
+# ----- ACM Certificate for Custom Domain -----
+resource "aws_acm_certificate" "cert" {
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+  tags              = local.tags
+}
+
+# Output ACM Validation Info (for Namecheap DNS)
+output "acm_validation_cname" {
+  value = aws_acm_certificate.cert.domain_validation_options
+}
+
+# ----- S3 Bucket (private) -----
 resource "aws_s3_bucket" "site" {
   bucket        = var.bucket_name
   force_destroy = true
@@ -220,6 +232,7 @@ resource "aws_s3_bucket_public_access_block" "block" {
   restrict_public_buckets = true
 }
 
+# ----- CloudFront with ACM -----
 resource "aws_cloudfront_origin_access_control" "oac" {
   name                              = "${var.project}-oac"
   description                       = "OAC for private S3 origin"
@@ -248,7 +261,6 @@ resource "aws_cloudfront_distribution" "cdn" {
 
     forwarded_values {
       query_string = false
-
       cookies {
         forward = "none"
       }
@@ -262,10 +274,13 @@ resource "aws_cloudfront_distribution" "cdn" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn     = aws_acm_certificate.cert.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
-  tags = local.tags
+  aliases = [var.domain_name]
+  tags    = local.tags
 }
 
 # Bucket policy allowing only this CloudFront distribution
@@ -308,13 +323,11 @@ resource "aws_cloudwatch_dashboard" "dash" {
         height = 6
         properties = {
           title   = "Page Visits (by page)"
-          metrics = [
-            ["Portfolio/Metrics", "PageVisits", "Page", "/"]
-          ]
-          period = 300
-          stat   = "Sum"
-          region = var.aws_region
-          view   = "timeSeries"
+          metrics = [["Portfolio/Metrics", "PageVisits", "Page", "/"]]
+          period  = 300
+          stat    = "Sum"
+          region  = var.aws_region
+          view    = "timeSeries"
         }
       },
       {
@@ -325,18 +338,15 @@ resource "aws_cloudwatch_dashboard" "dash" {
         height = 6
         properties = {
           title   = "Contact Submissions"
-          metrics = [
-            ["Portfolio/Metrics", "ContactSubmissions", "Page", "Contact"]
-          ]
-          period = 300
-          stat   = "Sum"
-          region = var.aws_region
-          view   = "timeSeries"
+          metrics = [["Portfolio/Metrics", "ContactSubmissions", "Page", "Contact"]]
+          period  = 300
+          stat    = "Sum"
+          region  = var.aws_region
+          view    = "timeSeries"
         }
       }
     ]
   })
-  
 }
 
 resource "aws_sns_topic" "alarms" {
@@ -362,7 +372,6 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   threshold           = 0
   alarm_description   = "Any Lambda errors > 0 in last 5 minutes"
   treat_missing_data  = "notBreaching"
-  dimensions          = {}
   alarm_actions       = [aws_sns_topic.alarms.arn]
   ok_actions          = [aws_sns_topic.alarms.arn]
 }
