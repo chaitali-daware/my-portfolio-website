@@ -54,19 +54,7 @@ resource "aws_acm_certificate" "cert" {
   validation_method = "DNS"
 }
 
-resource "aws_route53_record" "acm_validation" {
-  # This is just for reference if using Route53
-  # For Namecheap, you copy the CNAME manually
-  for_each = {
-    for dvo in aws_acm_certificate.cert.domain_validation_options : dvo.domain_name => dvo
-  }
 
-  zone_id = "" # leave empty, we use Namecheap manually
-  name    = each.value.resource_record_name
-  type    = each.value.resource_record_type
-  records = [each.value.resource_record_value]
-  ttl     = 60
-}
 
 resource "aws_acm_certificate_validation" "cert_validation" {
   certificate_arn         = aws_acm_certificate.cert.arn
