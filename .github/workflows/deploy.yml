@@ -1,25 +1,61 @@
-name: Terraform Deploy
+name: Deploy Portfolio (Terraform + AWS CLI)
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
-  terraform:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.7.6
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        run: terraform -chdir=terraform init
+        working-directory: terraform
+        run: terraform init
 
       - name: Terraform Apply
-        run: terraform -chdir=terraform apply -auto-approve
+        working-directory: terraform
+        env:
+          TF_INPUT: 0
+        run: terraform apply -auto-approve
+
+      - name: Grab Terraform outputs
+        id: tfout
+        run: |
+          echo "BUCKET=$(terraform -chdir=terraform output -raw bucket_name)" >> $GITHUB_ENV
+          echo "DIST_ID=$(terraform -chdir=terraform output -raw cloudfront_distribution_id)" >> $GITHUB_ENV
+          echo "CONTACT_API=$(terraform -chdir=terraform output -raw contact_api_url)" >> $GITHUB_ENV
+          echo "VISITOR_API=$(terraform -chdir=terraform output -raw visitor_api_url)" >> $GITHUB_ENV
+
+      - name: Replace frontend placeholders with API URLs
+        run: |
+          sed -i "s|_CONTACT_API_URL_|${CONTACT_API}|g" frontend/script.js
+          sed -i "s|_VISITOR_API_URL_|${VISITOR_API}|g" frontend/script.js
+
+      - name: Upload frontend to S3
+        run: |
+          aws s3 sync frontend/ "s3://${BUCKET}/" --delete --cache-control max-age=300
+
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+
+      - name: Output site URL
+        run: echo "Site is available at https://$(terraform -chdir=terraform output -raw cloudfront_domain_name)"
