@@ -2,14 +2,12 @@ provider "aws" {
   region = var.aws_region
 }
 
-# S3 Bucket
+# S3 Bucket (do NOT set ACL when using ObjectOwnership = BucketOwnerEnforced)
 resource "aws_s3_bucket" "website" {
   bucket = var.bucket_name
-
-  # Do NOT set ACL
 }
 
-# S3 Bucket Ownership & Public Access
+# Ensure public access is allowed
 resource "aws_s3_bucket_public_access_block" "block" {
   bucket                  = aws_s3_bucket.website.id
   block_public_acls       = false
@@ -18,7 +16,7 @@ resource "aws_s3_bucket_public_access_block" "block" {
   restrict_public_buckets = false
 }
 
-# S3 Bucket Policy for public read
+# Bucket policy for public read
 resource "aws_s3_bucket_policy" "public_read" {
   bucket = aws_s3_bucket.website.id
 
@@ -26,16 +24,16 @@ resource "aws_s3_bucket_policy" "public_read" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
+        Effect    = "Allow"
         Principal = "*"
-        Action = "s3:GetObject"
-        Resource = "${aws_s3_bucket.website.arn}/*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.website.arn}/*"
       }
     ]
   })
 }
 
-# S3 Bucket Website Configuration
+# Static website configuration
 resource "aws_s3_bucket_website_configuration" "website_config" {
   bucket = aws_s3_bucket.website.id
 
@@ -48,7 +46,7 @@ resource "aws_s3_bucket_website_configuration" "website_config" {
   }
 }
 
-# Upload all files in frontend/ folder
+# Upload all frontend files correctly
 resource "aws_s3_object" "website_files" {
   for_each = { for file in fileset("${path.module}/../frontend", "**/*") : file => file }
 
