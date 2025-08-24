@@ -1,4 +1,5 @@
 project      = "chaitali-portfolio"
-aws_region   = "ap-south-1"
-bucket_name  = "chaitalidaware.me" # must be globally unique
-alarm_email  = "chaitalidaware554@gmail.com"               # optional; leave "" to skip
+bucket_name  = "chaitalidaware.me"
+domain_name  = "chaitalidaware.me"   # Your Namecheap domain
+aws_region   = "us-east-1"
+alarm_email  = "chaitalidaware554@gmail.com"
