@@ -7,14 +7,13 @@ variable "bucket_name" {
 }
 
 variable "domain_name" {
-  description = "Your domain name (e.g., chaitalidaware.me)"
-  default     = "chaitalidaware.me"
+  description = "Your custom domain (Namecheap)"
 }
 
-variable "frontend_dir" {
-  default = "../frontend"
+variable "contact_form_table" {
+  default = "ContactFormSubmissions"
 }
 
-variable "lambda_dir" {
-  default = "../lambda"
+variable "visitor_table" {
+  default = "VisitorLogs"
 }
