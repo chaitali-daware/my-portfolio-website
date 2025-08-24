@@ -1,18 +1,9 @@
-output "s3_bucket"                 { value = aws_s3_bucket.site.id }
-output "cloudfront_distribution_id"{ value = aws_cloudfront_distribution.cdn.id }
-output "cloudfront_domain_name"    { value = aws_cloudfront_distribution.cdn.domain_name }
-output "visitor_api_url"           { value = local.visitor_api_url }
-output "contact_api_url"           { value = local.contact_api_url }
+output "s3_bucket_name" {
+  description = "The name of the S3 bucket"
+  value       = aws_s3_bucket.website.id
+}
 
-# Show ACM DNS CNAMEs to add in Namecheap
-output "acm_validation_records" {
-  description = "Add these CNAMEs in Namecheap DNS"
-  value = [
-    for dvo in aws_acm_certificate.cert.domain_validation_options :
-    {
-      name  = dvo.resource_record_name,
-      type  = dvo.resource_record_type,
-      value = dvo.resource_record_value
-    }
-  ]
+output "s3_website_endpoint" {
+  description = "The S3 website endpoint URL"
+  value       = aws_s3_bucket.website.website_endpoint
 }
