@@ -16,6 +16,11 @@ jobs:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
 
+    # ✅ Set working directory where your Terraform code is
+    defaults:
+      run:
+        working-directory: ./terraform  # Change this if your TF files are in a different folder
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -36,15 +41,21 @@ jobs:
         run: terraform init
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve -var="project=${{ env.PROJECT }}" -var="bucket_name=${{ env.BUCKET_NAME }}" -var="alarm_email=${{ secrets.ALARM_EMAIL }}"
+        run: |
+          terraform apply -auto-approve \
+            -var="project=${{ env.PROJECT }}" \
+            -var="bucket_name=${{ env.BUCKET_NAME }}" \
+            -var="alarm_email=${{ secrets.ALARM_EMAIL }}"
 
       - name: Get API URLs
         id: apis
         run: |
           CONTACT_URL=$(terraform output -raw contact_api_url)
           VISITOR_URL=$(terraform output -raw visitor_api_url)
+          CF_ID=$(terraform output -raw cloudfront_distribution_id)
           echo "contact_url=$CONTACT_URL" >> $GITHUB_OUTPUT
           echo "visitor_url=$VISITOR_URL" >> $GITHUB_OUTPUT
+          echo "cf_id=$CF_ID" >> $GITHUB_OUTPUT
 
   update-frontend:
     name: Update Frontend & Upload to S3
@@ -55,6 +66,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # ✅ Change frontend folder if needed
       - name: Replace API placeholders
         run: |
           sed -i "s|__CONTACT_API_URL__|${{ needs.terraform.outputs.contact_url }}|g" frontend/js/main.js
@@ -66,5 +78,4 @@ jobs:
 
       - name: Invalidate CloudFront Cache
         run: |
-          DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)
-          aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*"
+          aws cloudfront create-invalidation --distribution-id ${{ needs.terraform.outputs.cf_id }} --paths "/*"
