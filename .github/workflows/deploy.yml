@@ -1,4 +1,4 @@
-name: 🚀 Deploy Static Website to AWS S3 & CloudFront
+name: Deploy Static Website to AWS S3 & CloudFront
 
 on:
   push:
@@ -11,13 +11,13 @@ jobs:
 
     steps:
       # ---------------------------
-      # 1️⃣ Checkout repo
+      # 1️ Checkout repo
       # ---------------------------
       - name: Checkout Code
         uses: actions/checkout@v3
 
       # ---------------------------
-      # 2️⃣ Install AWS CLI & dependencies
+      # 2️ Install AWS CLI & dependencies
       # ---------------------------
       - name: Install AWS CLI
         run: |
@@ -26,7 +26,7 @@ jobs:
           pip3 install awscli
 
       # ---------------------------
-      # 3️⃣ Setup Terraform
+      # 3️ Setup Terraform
       # ---------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -34,7 +34,7 @@ jobs:
           terraform_version: 1.5.7
 
       # ---------------------------
-      # 4️⃣ Configure AWS Credentials
+      # 4️ Configure AWS Credentials
       # ---------------------------
       - name: Configure AWS Credentials
         env:
@@ -47,7 +47,7 @@ jobs:
           aws configure set default.region $AWS_REGION
 
       # ---------------------------
-      # 5️⃣ Package Lambda code
+      # 5️ Package Lambda code
       # ---------------------------
       - name: Package Lambda Code
         run: |
@@ -56,7 +56,7 @@ jobs:
           zip -j terraform/visitor.zip lambda/logVisitorData.py
 
       # ---------------------------
-      # 6️⃣ Terraform Init & Apply
+      # 6️ Terraform Init & Apply
       # ---------------------------
       - name: Terraform Init & Apply
         working-directory: terraform
@@ -65,7 +65,7 @@ jobs:
           terraform apply -auto-approve -var-file="terraform.tfvars"
 
       # ---------------------------
-      # 7️⃣ Upload Frontend Files to S3
+      # 7️ Upload Frontend Files to S3
       # ---------------------------
       - name: Upload Frontend to S3
         env:
@@ -74,7 +74,7 @@ jobs:
           aws s3 sync frontend/ s3://$S3_BUCKET_NAME --delete
 
       # ---------------------------
-      # 8️⃣ Invalidate CloudFront Cache
+      # 8️ Invalidate CloudFront Cache
       # ---------------------------
       - name: Invalidate CloudFront Cache
         env:
