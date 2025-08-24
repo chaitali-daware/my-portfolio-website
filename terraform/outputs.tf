@@ -10,6 +10,6 @@ output "cloudfront_url" {
   value = aws_cloudfront_distribution.cdn.domain_name
 }
 
-output "acm_cname_validation" {
-  value = [for o in aws_acm_certificate.cert.domain_validation_options : o.resource_record_name + " -> " + o.resource_record_value]
+output "acm_certificate_arn" {
+  value = aws_acm_certificate.cert.arn
 }
