@@ -10,7 +10,12 @@ resource "aws_dynamodb_table" "contact" {
   name         = "${var.project}-contact"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
-  attribute { name = "id"; type = "S" }
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
   tags = local.tags
 }
 
@@ -18,7 +23,12 @@ resource "aws_dynamodb_table" "visitor" {
   name         = "${var.project}-visitor"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
-  attribute { name = "id"; type = "S" }
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
   tags = local.tags
 }
 
@@ -28,6 +38,7 @@ data "archive_file" "contact_zip" {
   source_file = "${path.module}/../lambda/handleContactForm.py"
   output_path = "${path.module}/../lambda/handleContactForm.zip"
 }
+
 data "archive_file" "visitor_zip" {
   type        = "zip"
   source_file = "${path.module}/../lambda/logVisitorData.py"
@@ -38,7 +49,11 @@ data "archive_file" "visitor_zip" {
 data "aws_iam_policy_document" "lambda_trust" {
   statement {
     actions = ["sts:AssumeRole"]
-    principals { type = "Service"; identifiers = ["lambda.amazonaws.com"] }
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
   }
 }
 
@@ -57,14 +72,20 @@ data "aws_iam_policy_document" "lambda_policy_doc" {
       aws_dynamodb_table.visitor.arn
     ]
   }
+
   statement {
     sid     = "CloudWatchMetrics"
     actions = ["cloudwatch:PutMetricData"]
     resources = ["*"]
   }
+
   statement {
     sid = "Logs"
-    actions = ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"]
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
     resources = ["arn:aws:logs:::*"]
   }
 }
@@ -88,11 +109,13 @@ resource "aws_lambda_function" "contact" {
   filename         = data.archive_file.contact_zip.output_path
   source_code_hash = data.archive_file.contact_zip.output_base64sha256
   timeout          = 10
+
   environment {
     variables = {
       CONTACT_TABLE = aws_dynamodb_table.contact.name
     }
   }
+
   tags = local.tags
 }
 
@@ -104,11 +127,13 @@ resource "aws_lambda_function" "visitor" {
   filename         = data.archive_file.visitor_zip.output_path
   source_code_hash = data.archive_file.visitor_zip.output_base64sha256
   timeout          = 10
+
   environment {
     variables = {
       VISITOR_TABLE = aws_dynamodb_table.visitor.name
     }
   }
+
   tags = local.tags
 }
 
@@ -116,11 +141,13 @@ resource "aws_lambda_function" "visitor" {
 resource "aws_apigatewayv2_api" "api" {
   name          = "${var.project}-api"
   protocol_type = "HTTP"
+
   cors_configuration {
     allow_origins = ["*"]
     allow_methods = ["POST", "OPTIONS"]
     allow_headers = ["*"]
   }
+
   tags = local.tags
 }
 
@@ -145,6 +172,7 @@ resource "aws_apigatewayv2_route" "contact_route" {
   route_key = "POST /contact"
   target    = "integrations/${aws_apigatewayv2_integration.contact_integ.id}"
 }
+
 resource "aws_apigatewayv2_route" "visitor_route" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "POST /visitor"
@@ -167,6 +195,7 @@ resource "aws_lambda_permission" "apigw_contact" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.api.execution_arn}///contact"
 }
+
 resource "aws_lambda_permission" "apigw_visitor" {
   statement_id  = "AllowAPIGatewayInvokeVisitor"
   action        = "lambda:InvokeFunction"
@@ -184,6 +213,7 @@ resource "aws_s3_bucket" "site" {
 
 resource "aws_s3_bucket_public_access_block" "block" {
   bucket = aws_s3_bucket.site.id
+
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -215,14 +245,25 @@ resource "aws_cloudfront_distribution" "cdn" {
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
+
     forwarded_values {
       query_string = false
-      cookies { forward = "none" }
+
+      cookies {
+        forward = "none"
+      }
     }
   }
 
-  restrictions { geo_restriction { restriction_type = "none" } }
-  viewer_certificate { cloudfront_default_certificate = true }
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
 
   tags = local.tags
 }
@@ -231,9 +272,15 @@ resource "aws_cloudfront_distribution" "cdn" {
 data "aws_iam_policy_document" "bucket_policy" {
   statement {
     sid = "AllowCloudFrontServicePrincipalReadOnly"
-    principals { type = "Service"; identifiers = ["cloudfront.amazonaws.com"] }
-    actions = ["s3:GetObject"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.site.arn}/*"]
+
     condition {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
@@ -241,9 +288,10 @@ data "aws_iam_policy_document" "bucket_policy" {
     }
   }
 }
+
 resource "aws_s3_bucket_policy" "site_policy" {
-  bucket = aws_s3_bucket.site.id
-  policy = data.aws_iam_policy_document.bucket_policy.json
+  bucket     = aws_s3_bucket.site.id
+  policy     = data.aws_iam_policy_document.bucket_policy.json
   depends_on = [aws_cloudfront_distribution.cdn]
 }
 
@@ -253,25 +301,37 @@ resource "aws_cloudwatch_dashboard" "dash" {
   dashboard_body = jsonencode({
     widgets = [
       {
-        type = "metric",
-        x = 0, y = 0, width = 12, height = 6,
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
         properties = {
-          title = "Page Visits (by page)"
+          title   = "Page Visits (by page)"
           metrics = [
-            ["Portfolio/Metrics","PageVisits","Page","/"],
+            ["Portfolio/Metrics", "PageVisits", "Page", "/"]
           ]
-          period = 300, stat = "Sum", region = var.aws_region, view = "timeSeries"
+          period = 300
+          stat   = "Sum"
+          region = var.aws_region
+          view   = "timeSeries"
         }
       },
       {
-        type = "metric",
-        x = 0, y = 6, width = 12, height = 6,
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
         properties = {
-          title = "Contact Submissions"
+          title   = "Contact Submissions"
           metrics = [
-            ["Portfolio/Metrics","ContactSubmissions","Page","Contact"]
+            ["Portfolio/Metrics", "ContactSubmissions", "Page", "Contact"]
           ]
-          period = 300, stat = "Sum", region = var.aws_region, view = "timeSeries"
+          period = 300
+          stat   = "Sum"
+          region = var.aws_region
+          view   = "timeSeries"
         }
       }
     ]
@@ -302,9 +362,9 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   threshold           = 0
   alarm_description   = "Any Lambda errors > 0 in last 5 minutes"
   treat_missing_data  = "notBreaching"
-  dimensions = {}
-  alarm_actions = [aws_sns_topic.alarms.arn]
-  ok_actions    = [aws_sns_topic.alarms.arn]
+  dimensions          = {}
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  ok_actions          = [aws_sns_topic.alarms.arn]
 }
 
 # ----- Helpful tags -----
@@ -313,6 +373,7 @@ resource "aws_cloudwatch_log_group" "contact_lg" {
   retention_in_days = 14
   tags              = local.tags
 }
+
 resource "aws_cloudwatch_log_group" "visitor_lg" {
   name              = "/aws/lambda/${aws_lambda_function.visitor.function_name}"
   retention_in_days = 14
