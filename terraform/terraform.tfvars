@@ -1,3 +1,5 @@
-aws_region   = "ap-south-1"
-bucket_name  = "chaitalidaware.me" # must be globally unique
-domain_name  = "chaitalidaware.me"
+aws_region      = "ap-south-1"
+bucket_name     = "chaitalidaware.me"
+domain_name     = "chaitalidaware.me"
+frontend_folder = "../frontend"
+lambda_folder   = "../lambda"
