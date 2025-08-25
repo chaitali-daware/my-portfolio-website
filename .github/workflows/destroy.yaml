@@ -1,48 +1,32 @@
-name: Destroy AWS Infrastructure
+name: Destroy Infrastructure
 
 on:
-  workflow_dispatch:   # Allows manual trigger from GitHub UI
+  workflow_dispatch:   # Manually trigger
 
 jobs:
   destroy:
     runs-on: ubuntu-latest
-    env:
-      AWS_REGION: ap-south-1
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout Repo
+        uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
         with:
-          python-version: "3.11"
-
-      - name: Install AWS CLI
-        run: |
-          python -m pip install --upgrade pip
-          pip install awscli
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.5.7
 
-      - name: Configure AWS credentials
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-          aws configure set region $AWS_REGION
-
-      - name: Empty S3 bucket (if exists)
-        run: |
-          aws s3 rm s3://chaitalidaware.me --recursive || echo "Bucket not found, skipping."
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
 
       - name: Terraform Destroy
         working-directory: terraform
-        run: |
-          terraform init -input=false
-          terraform destroy -auto-approve
+        run: terraform destroy -auto-approve -var-file="terraform.tfvars"
