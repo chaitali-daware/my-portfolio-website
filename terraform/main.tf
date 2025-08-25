@@ -6,11 +6,10 @@ provider "aws" {
 # S3 Bucket for Frontend
 # ---------------------------
 resource "aws_s3_bucket" "portfolio_bucket" {
-  bucket         = var.bucket_name
-  force_destroy  = true
+  bucket        = var.bucket_name
+  force_destroy = true
 }
 
-# Enforce Ownership Control
 resource "aws_s3_bucket_ownership_controls" "ownership" {
   bucket = aws_s3_bucket.portfolio_bucket.id
   rule {
@@ -18,7 +17,6 @@ resource "aws_s3_bucket_ownership_controls" "ownership" {
   }
 }
 
-# Website Configuration (still needed for index.html fallback)
 resource "aws_s3_bucket_website_configuration" "portfolio_website" {
   bucket = aws_s3_bucket.portfolio_bucket.id
   index_document {
@@ -42,7 +40,6 @@ resource "aws_iam_role" "lambda_exec" {
   })
 }
 
-# Attach DynamoDB permissions to Lambda
 resource "aws_iam_role_policy" "lambda_dynamodb" {
   name = "lambda-dynamodb-policy"
   role = aws_iam_role.lambda_exec.id
@@ -130,9 +127,9 @@ resource "aws_apigatewayv2_api" "contact_form_api" {
 }
 
 resource "aws_apigatewayv2_integration" "contact_form_integration" {
-  api_id                = aws_apigatewayv2_api.contact_form_api.id
-  integration_type      = "AWS_PROXY"
-  integration_uri       = aws_lambda_function.contact_form.invoke_arn
+  api_id                 = aws_apigatewayv2_api.contact_form_api.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.contact_form.invoke_arn
   payload_format_version = "2.0"
 }
 
@@ -165,9 +162,9 @@ resource "aws_apigatewayv2_api" "visitor_api" {
 }
 
 resource "aws_apigatewayv2_integration" "visitor_integration" {
-  api_id                = aws_apigatewayv2_api.visitor_api.id
-  integration_type      = "AWS_PROXY"
-  integration_uri       = aws_lambda_function.log_visitor.invoke_arn
+  api_id                 = aws_apigatewayv2_api.visitor_api.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.log_visitor.invoke_arn
   payload_format_version = "2.0"
 }
 
@@ -204,7 +201,7 @@ resource "aws_s3_bucket_policy" "bucket_policy" {
     Version = "2012-10-17",
     Statement = [
       {
-        Effect = "Allow",
+        Effect: "Allow",
         Principal = {
           AWS = aws_cloudfront_origin_access_identity.oai.iam_arn
         },
@@ -243,6 +240,35 @@ resource "aws_cloudfront_distribution" "portfolio_distribution" {
     viewer_protocol_policy = "redirect-to-https"
   }
 
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = var.acm_certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  price_class = "PriceClass_100"
+
+  depends_on = [
+    aws_s3_bucket_policy.bucket_policy,
+    aws_cloudfront_origin_access_identity.oai
+  ]
+
+  tags = {
+    Name = "PortfolioCloudFront"
+  }
+}
 
 # ---------------------------
 # CloudWatch Dashboard
@@ -290,25 +316,4 @@ resource "aws_cloudwatch_dashboard" "portfolio_dashboard" {
       }
     ]
   })
-}
-
-
-  # Use ACM if custom domain, else CloudFront default
-  viewer_certificate {
-    acm_certificate_arn = var.acm_certificate_arn
-    ssl_support_method  = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
-  }
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-
-  price_class = "PriceClass_100"
-
-  tags = {
-    Name = "PortfolioCloudFront"
-  }
 }
