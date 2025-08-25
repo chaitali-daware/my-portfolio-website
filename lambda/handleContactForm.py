@@ -1,65 +1,104 @@
 import json
 import boto3
 import uuid
-from datetime import datetime
-import os
-import traceback
+import datetime
 
+# Initialize AWS resources
 dynamodb = boto3.resource('dynamodb')
 cloudwatch = boto3.client('cloudwatch')
+table = dynamodb.Table('ContactFormSubmissions')
 
-CONTACT_TABLE = os.environ.get("CONTACT_TABLE", "ContactFormSubmissions")
-table = dynamodb.Table(CONTACT_TABLE)
-
-def response(code, body):
+def cors_headers():
     return {
-        'statusCode': code,
-        'headers': {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': '*',
-            'Content-Type': 'application/json'
-        },
-        'body': json.dumps(body)
+        "Access-Control-Allow-Origin": "*",  # Change to your domain for security
+        "Access-Control-Allow-Methods": "OPTIONS,POST",
+        "Access-Control-Allow-Headers": "*"
     }
 
 def lambda_handler(event, context):
+    print(" Event received:", json.dumps(event))
+
+    # Detect HTTP method safely
+    method = (
+        event.get("requestContext", {}).get("http", {}).get("method")
+        or event.get("httpMethod")
+    )
+
+    # Handle CORS Preflight (OPTIONS)
+    if method == "OPTIONS":
+        return {
+            "statusCode": 200,
+            "headers": cors_headers(),
+            "body": ""
+        }
+
     try:
-        print("Event:", event)
-        body = json.loads(event.get('body', '{}'))
+        # Parse JSON body safely
+        try:
+            data = json.loads(event.get('body') or "{}")
+        except json.JSONDecodeError:
+            return {
+                "statusCode": 400,
+                "headers": cors_headers(),
+                "body": json.dumps({"error": "Invalid JSON"})
+            }
 
-        name = body.get('name')
-        email = body.get('email')
-        message = body.get('message')
-        referral_code = body.get('referralCode', 'Direct')
+        name = data.get('name')
+        email = data.get('email')
+        message = data.get('message')
+        referral_code = data.get('referralCode', 'Direct')
 
+        # Validate required fields
         if not name or not email or not message:
-            return response(400, {'error': 'Missing required fields.'})
+            return {
+                "statusCode": 400,
+                "headers": cors_headers(),
+                "body": json.dumps({"error": "Missing required fields"})
+            }
 
+        # Build DynamoDB item
         item = {
             'id': str(uuid.uuid4()),
             'name': name,
             'email': email,
             'message': message,
             'referralCode': referral_code,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': str(datetime.datetime.utcnow())
         }
 
+        # Store in DynamoDB
         table.put_item(Item=item)
 
-        try:
-            cloudwatch.put_metric_data(
-                Namespace='Portfolio/Metrics',
-                MetricData=[
-                    {'MetricName': 'ContactSubmissions', 'Dimensions': [{'Name': 'Page', 'Value': 'Contact'}], 'Unit': 'Count', 'Value': 1},
-                    {'MetricName': 'ReferralHits', 'Dimensions': [{'Name': 'Source', 'Value': referral_code}], 'Unit': 'Count', 'Value': 1}
-                ]
-            )
-        except Exception as e:
-            print("CloudWatch metric publish failed:", str(e))
+        # Publish metrics to CloudWatch
+        cloudwatch.put_metric_data(
+            Namespace='Portfolio/Metrics',
+            MetricData=[
+                {
+                    'MetricName': 'ContactSubmissions',
+                    'Dimensions': [{'Name': 'Page', 'Value': 'Contact'}],
+                    'Unit': 'Count',
+                    'Value': 1
+                },
+                {
+                    'MetricName': 'ReferralHits',
+                    'Dimensions': [{'Name': 'Source', 'Value': referral_code}],
+                    'Unit': 'Count',
+                    'Value': 1
+                }
+            ]
+        )
 
-        return response(200, {'message': 'Message sent successfully!'})
+        # Successful response
+        return {
+            'statusCode': 200,
+            'headers': cors_headers(),
+            'body': json.dumps({'message': 'Message sent successfully!'})
+        }
 
     except Exception as e:
         print("Error:", str(e))
-        traceback.print_exc()
-        return response(500, {'error': 'Failed to submit form.'})
+        return {
+            'statusCode': 500,
+            'headers': cors_headers(),
+            'body': json.dumps({'error': 'Failed to submit form.'})
+        }
